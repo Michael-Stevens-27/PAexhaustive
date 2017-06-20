@@ -3,12 +3,16 @@
 rm(list = ls())
 
 ##_____________ PACKAGES ______________##
-#library(compiler)
-#library(RgeoProfile)
-#library(gRbase)
+library(gRbase) ## For the "combnPrim" function, efficiently listing combinations
 
 ##_____________FUNCTIONS ______________##
 ###########################################################################################################################################
+#
+# The "pairwise_distance" function returns half the average of the minimum distances between traps. This value takes the place of the
+# x and y standard deviations in our model.
+#
+###########################################################################################################################################
+
 pairwise_distance <- function(points){
 	distance <- matrix(NA, ncol = length(points[,1]), nrow = length(points[,1]))
 
@@ -33,6 +37,42 @@ pairwise_distance <- function(points){
 	return(SD_TR)
 }
 
+###########################################################################################################################################
+#
+# The "Extract_Params1S" function returns all parameters required for the one source model
+#
+###########################################################################################################################################
+
+Extract_Params1S <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6)
+			{
+			colnames(Trap_Data) <- c("Longitude", "Latitude", "Hits")
+			Trap_Data <- data.frame(Trap_Data)
+			MnMx_Long <- c(min(Trap_Data$Longitude), max(Trap_Data$Longitude))
+			MnMx_Lat <- c(min(Trap_Data$Latitude), max(Trap_Data$Latitude))
+			Long_Max_Bound <- MnMx_Long[2] + Guard_Rail
+			Long_Min_Bound <- MnMx_Long[1] - Guard_Rail
+			Lat_Max_Bound <-  MnMx_Lat[2] + Guard_Rail
+			Lat_Min_Bound <- MnMx_Lat[1] - Guard_Rail
+			Anchor_Points_Long <- seq(min(Long_Min_Bound,Long_Max_Bound), max(Long_Min_Bound,Long_Max_Bound), abs((Long_Max_Bound-Long_Min_Bound)/x_grid_cells))
+			Anchor_Points_Lat <- seq(min(Lat_Min_Bound, Lat_Max_Bound), max(Lat_Min_Bound, Lat_Max_Bound), abs(Lat_Max_Bound-Lat_Min_Bound)/y_grid_cells)
+			Hits_Only <- subset(Trap_Data, Hits != 0)
+			Miss_Only <- subset(Trap_Data, Hits == 0)
+			pairwise <- pairwise_distance(Trap_Data)
+			Sd_x <- 0.5*mean(pairwise$distance, na.rm = TRUE)
+			Sd_y <- 0.5*mean(pairwise$distance, na.rm = TRUE)
+			#Trap_Radius <- (pairwise$TR)
+		  #Time <- (Sd_x*Sd_y)/(Trap_Radius^2)
+			params <- list(x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
+				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
+				    Hits_Only=Hits_Only, Miss_Only=Miss_Only)
+			return(params)
+			}
+
+###########################################################################################################################################
+#
+# The "Extract_Params2S" function returns a list of parameters for the two source model. In addition to returning the same paramters as "Extract_Params1S,"
+# it also returns "AP_allocation," a matrix representing all the ways of allocating two sources to the number of grid cells.
+#
 ###########################################################################################################################################
 
 Extract_Params2S <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6)
@@ -67,42 +107,26 @@ Extract_Params2S <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Ti
 			}
 
 ###########################################################################################################################################
-
-Extract_Params1S <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6)
-			{
-			colnames(Trap_Data) <- c("Longitude", "Latitude", "Hits")
-			Trap_Data <- data.frame(Trap_Data)
-			MnMx_Long <- c(min(Trap_Data$Longitude), max(Trap_Data$Longitude))
-			MnMx_Lat <- c(min(Trap_Data$Latitude), max(Trap_Data$Latitude))
-			Long_Max_Bound <- MnMx_Long[2] + Guard_Rail
-			Long_Min_Bound <- MnMx_Long[1] - Guard_Rail
-			Lat_Max_Bound <-  MnMx_Lat[2] + Guard_Rail
-			Lat_Min_Bound <- MnMx_Lat[1] - Guard_Rail
-			Anchor_Points_Long <- seq(min(Long_Min_Bound,Long_Max_Bound), max(Long_Min_Bound,Long_Max_Bound), abs((Long_Max_Bound-Long_Min_Bound)/x_grid_cells))
-			Anchor_Points_Lat <- seq(min(Lat_Min_Bound, Lat_Max_Bound), max(Lat_Min_Bound, Lat_Max_Bound), abs(Lat_Max_Bound-Lat_Min_Bound)/y_grid_cells)
-			Hits_Only <- subset(Trap_Data, Hits != 0)
-			Miss_Only <- subset(Trap_Data, Hits == 0)
-			pairwise <- pairwise_distance(Trap_Data)
-			Sd_x <- 0.5*mean(pairwise$distance, na.rm = TRUE)
-			Sd_y <- 0.5*mean(pairwise$distance, na.rm = TRUE)
-			#Trap_Radius <- (pairwise$TR)
-		  #Time <- (Sd_x*Sd_y)/(Trap_Radius^2)
-			params <- list(x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
-				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
-				    Hits_Only=Hits_Only, Miss_Only=Miss_Only)
-			return(params)
-			}
-
+#
+# The "Poisson_Parameter" function returns the average number of hits we expect to see within a trap located at "(x, y)." This value
+# is an approximation of the integral of a bivariate normal distribution bounded by the trap radius. We state expected number of hits
+# is a value observed over some time interval, thus the multiplication by "t."
+#
 ###########################################################################################################################################
 
 Poisson_Parameter <- function(x, y, mu_x, mu_y, trap_radius, t, Sd_x, Sd_y)
                      	{
-				co_efficient <- 4*(trap_radius^2)*t*(2*pi*Sd_x*Sd_y)^(-1)
+				co_efficient <- t*4*(trap_radius^2)*(2*pi*Sd_x*Sd_y)^(-1)
 				param <- co_efficient*exp( -0.5*( (x - mu_x)^2/(Sd_x*Sd_x) + (y - mu_y)^2/(Sd_y*Sd_y) ) )
 				return(param)
                         }
 
 ########################################################################################################################################
+#
+# The "Trap_Po_Parameters" function returns the poisson parameter for each trap in the form of an array. Where the individual entries of
+# matrix i represent the Poisson parameters of event i.
+#
+#######################################################################################################################################
 
 Trap_Po_Parameters <- function(Params)
 			    {
@@ -127,6 +151,11 @@ Trap_Po_Parameters <- function(Params)
 			return(Po_Param)
 }
 
+###########################################################################################################################################
+#
+# The "Single_Source_Probability" function returns three matrices: one describing the likelihood of the hits, one of the misses and another
+# for both combined. This function will find only one source and should only be used on data where one source is expected.
+#
 ###########################################################################################################################################
 
 Single_Source_Probability <- function(Data_Params, Trap_Params)
@@ -154,6 +183,10 @@ Single_Source_Probability <- function(Data_Params, Trap_Params)
 				return(SS_Prob)
 	     }
 
+###########################################################################################################################################
+#
+# The "DS_Po_Params" function returns the same matrices as "Single_Source_Probability" does, but with the capability of locating two sources
+#
 ###########################################################################################################################################
 
 DS_Po_Params <- function(Data_Params, Po_Params)
@@ -217,6 +250,10 @@ DS_Po_Params <- function(Data_Params, Po_Params)
 }
 
 ###########################################################################################################################################
+#
+# The "plot1source" function plots a contour map of the single source probabilities
+#
+###########################################################################################################################################
 
 plot1source <- function(Data_Params, SS_Prob)
 		   {
@@ -234,6 +271,10 @@ plot1source <- function(Data_Params, SS_Prob)
 				 #persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat,  SS_Prob$SS_Both, col = "blue")
 			 }
 
+###########################################################################################################################################
+#
+# The "plot2source" function plots a contour map of the two source probabilities
+#
 ###########################################################################################################################################
 
 plot2source <- function(Data_Params, Two_Source, DPM_SIM)
@@ -272,15 +313,17 @@ plot2source <- function(Data_Params, Two_Source, DPM_SIM)
 ###########################################################################################################################################
 
 ##_____________USER INPUT ______________##
+
 ## The only input required is the Longitude/Latitude points of said traps,
-## along with the number of hits associated with each
+## along with the number of hits associated with each (non negative integer)
+
 setwd("/home/mstevens/Desktop/presence_absence/Finals/data")
 
 ###########################################################################################################################################
 My_trap_data <- read.table("Dummy.txt", header = FALSE)
 ###########################################################################################################################################
 
-############### ONE SOURCE ###################
+############### ONE SOURCE ##############
 ## Extract ALL Parameters from your data
 Data_params1S <- Extract_Params1S(My_trap_data, x_grid_cells = 50, y_grid_cells = 50, Trap_Radius = 2, Guard_Rail = 1)
 
@@ -292,7 +335,6 @@ Single_Source_Prob <- Single_Source_Probability(Data_params1S, Trap_Po_Params)
 
 ## Contour plot of the matrices
 plot1source(Data_params1S, Single_Source_Prob)
-
 
 ############## TWO SOURCE ###########
 ## Extract ALL Parameters from your data
