@@ -197,7 +197,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 
 				for(i in 1:length(Data_Params$Grid[,1]))
 				{
-					a <- apply(TS_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i), MARGIN=1)
+					a <- apply(S_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i), MARGIN=1)
 					final_hits[i] <- sum(S_probs[a, Data_Params$n_sources + 1])
 					final_miss[i] <- sum(S_probs[a, Data_Params$n_sources + 2])
 					final_both[i] <- sum(S_probs[a, Data_Params$n_sources + 3])
@@ -226,9 +226,9 @@ plot_sources <- function(Data_Params, Probs)
 				 if(Data_Params$n_sources == 1)
 				 {
 				 #x11()
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Hits, col = "darkgreen", nlevels = 5)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Miss,col = "red",add=TRUE, nlevels = 5)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Both,col = "blue", add=TRUE, nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Hits, col = "darkgreen", nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Miss,col = "red",add=TRUE, nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Both,col = "blue", add=TRUE, nlevels = 5)
 				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
 				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
 
@@ -301,7 +301,7 @@ plot_sources(Data_params1S, Single_Source_Prob)
 ############## TWO SOURCE ###########
 ## Extract ALL Parameters from your data
 
-Data_params2S <- Extract_Params(My_trap_data, x_grid_cells = 6, y_grid_cells = 6, Guard_Rail = 3, Trap_Radius = 1, n_sources = 4)
+Data_params2S <- Extract_Params(My_trap_data, x_grid_cells = 10, y_grid_cells = 10, Guard_Rail = 3, Trap_Radius = 1, n_sources = 2)
 
 ## Compute Poisson Parameters
 Trap_Po_Params <- Trap_Po_Parameters(Data_params2S)

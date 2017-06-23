@@ -161,6 +161,12 @@ Trap_Po_Parameters <- function(Params)
 #
 ###########################################################################################################################################
 
+###########################################################################################################################################
+#
+# The "Multisource_probs" function returns the porbability for source locations. Given the user specifies the number of sources expected.
+#
+###########################################################################################################################################
+
 Multisource_probs <- function(Data_Params, Po_Params)
 		{
     ####################################################
@@ -230,7 +236,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 
 				for(i in 1:length(Data_Params$Grid[,1]))
 				{
-					a <- apply(TS_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i), MARGIN=1)
+					a <- apply(S_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i), MARGIN=1)
 					final_hits[i] <- sum(S_probs[a, Data_Params$n_sources + 1])
 					final_miss[i] <- sum(S_probs[a, Data_Params$n_sources + 2])
 					final_both[i] <- sum(S_probs[a, Data_Params$n_sources + 3])
