@@ -39,11 +39,13 @@ pairwise_distance <- function(points){
 
 ###########################################################################################################################################
 #
-# The "Extract_Params1S" function returns all parameters required for the one source model
+# The "Extract_Params" function returns a list of parameters for an "n_sources" source model. Should "n_sources" be set to anything greater
+# than one, "Extract_Params" will produce an additional parameter "AP_allocation," a list ilustrating the number of ways of choosing
+# "n_sources" sources from the total number of grid cells.
 #
 ###########################################################################################################################################
 
-Extract_Params1S <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6)
+Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6, n_sources = 1)
 			{
 			colnames(Trap_Data) <- c("Longitude", "Latitude", "Hits")
 			Trap_Data <- data.frame(Trap_Data)
@@ -53,54 +55,23 @@ Extract_Params1S <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Ti
 			Long_Min_Bound <- MnMx_Long[1] - Guard_Rail
 			Lat_Max_Bound <-  MnMx_Lat[2] + Guard_Rail
 			Lat_Min_Bound <- MnMx_Lat[1] - Guard_Rail
-			Anchor_Points_Long <- seq(min(Long_Min_Bound,Long_Max_Bound), max(Long_Min_Bound,Long_Max_Bound), abs((Long_Max_Bound-Long_Min_Bound)/x_grid_cells))
-			Anchor_Points_Lat <- seq(min(Lat_Min_Bound, Lat_Max_Bound), max(Lat_Min_Bound, Lat_Max_Bound), abs(Lat_Max_Bound-Lat_Min_Bound)/y_grid_cells)
-			Hits_Only <- subset(Trap_Data, Hits != 0)
+			Anchor_Points_Long <- seq(min(Long_Min_Bound,Long_Max_Bound), max(Long_Min_Bound,Long_Max_Bound), abs(Long_Max_Bound-Long_Min_Bound)/(x_grid_cells - 1))
+			Anchor_Points_Lat <- seq(min(Lat_Min_Bound, Lat_Max_Bound), max(Lat_Min_Bound, Lat_Max_Bound), abs(Lat_Max_Bound-Lat_Min_Bound)/(y_grid_cells - 1))
+			if(n_sources > 1)
+      {
+        AP_allocation <- t(combnPrim(x_grid_cells*y_grid_cells, n_sources))
+      } else {
+        AP_allocation <- "NA"
+        }
+      Hits_Only <- subset(Trap_Data, Hits != 0)
 			Miss_Only <- subset(Trap_Data, Hits == 0)
-			pairwise <- pairwise_distance(Trap_Data)
-			Sd_x <- 0.5*mean(pairwise$distance, na.rm = TRUE)
-			Sd_y <- 0.5*mean(pairwise$distance, na.rm = TRUE)
-			#Trap_Radius <- (pairwise$TR)
-		  #Time <- (Sd_x*Sd_y)/(Trap_Radius^2)
-			params <- list(x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
-				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
-				    Hits_Only=Hits_Only, Miss_Only=Miss_Only)
-			return(params)
-			}
-
-###########################################################################################################################################
-#
-# The "Extract_Params2S" function returns a list of parameters for the two source model. In addition to returning the same paramters as "Extract_Params1S,"
-# it also returns "AP_allocation," a matrix representing all the ways of allocating two sources to the number of grid cells.
-#
-###########################################################################################################################################
-
-Extract_Params2S <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6)
-			{
-			colnames(Trap_Data) <- c("Longitude", "Latitude", "Hits")
-			Trap_Data <- data.frame(Trap_Data)
-			MnMx_Long <- c(min(Trap_Data$Longitude), max(Trap_Data$Longitude))
-			MnMx_Lat <- c(min(Trap_Data$Latitude), max(Trap_Data$Latitude))
-			Long_Max_Bound <- MnMx_Long[2] + Guard_Rail
-			Long_Min_Bound <- MnMx_Long[1] - Guard_Rail
-			Lat_Max_Bound <-  MnMx_Lat[2] + Guard_Rail
-			Lat_Min_Bound <- MnMx_Lat[1] - Guard_Rail
-			Anchor_Points_Long <- seq(min(Long_Min_Bound,Long_Max_Bound), max(Long_Min_Bound,Long_Max_Bound), abs((Long_Max_Bound-Long_Min_Bound)/x_grid_cells))
-			Anchor_Points_Lat <- seq(min(Lat_Min_Bound, Lat_Max_Bound), max(Lat_Min_Bound, Lat_Max_Bound), abs(Lat_Max_Bound-Lat_Min_Bound)/y_grid_cells)
-			AP_allocation <- t(combnPrim(x_grid_cells*y_grid_cells,2))
-			#AP_allocation <- cbind(rep(1:((x_grid_cells + 1)*(y_grid_cells + 1)),each=((x_grid_cells + 1)*(y_grid_cells + 1))),
-						     #rep(1:((x_grid_cells + 1)*(y_grid_cells + 1)),(x_grid_cells + 1)*(y_grid_cells + 1)))
-			#AP_allocation <- unique(t(apply(AP_allocation, 1, sort)))
-			Hits_Only <- subset(Trap_Data, Hits != 0)
-			Miss_Only <- subset(Trap_Data, Hits == 0)
-			Grid <- expand.grid(1:(x_grid_cells + 1), 1:(y_grid_cells + 1))
+			Grid <- expand.grid(1:(x_grid_cells), 1:(y_grid_cells))
 			names(Grid) = c("x", "y")
 			pairwise <- pairwise_distance(Trap_Data)
-			Sd_x <- 0.5*mean(pairwise$distance, na.rm = TRUE)
-			Sd_y <- 0.5*mean(pairwise$distance, na.rm = TRUE)
-			#Trap_Radius <- (pairwise$TR)
-		  #Time <- (Sd_x*Sd_y)/(Trap_Radius^2)
-			params <- list(x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
+			Sd_x <- 0.2*mean(pairwise$distance, na.rm = TRUE)
+			Sd_y <- 0.2*mean(pairwise$distance, na.rm = TRUE)
+
+      params <- list(n_sources = n_sources, x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
 				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
 				    Grid = Grid, AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only)
 			return(params)
@@ -153,22 +124,26 @@ Trap_Po_Parameters <- function(Params)
 
 ###########################################################################################################################################
 #
-# The "Single_Source_Probability" function returns three matrices: one describing the likelihood of the hits, one of the misses and another
-# for both combined. This function will find only one source and should only be used on data where one source is expected.
+# The "Multisource_probs" function returns the porbability for source locations. Given the user specifies the number of sources expected.
 #
 ###########################################################################################################################################
 
-Single_Source_Probability <- function(Data_Params, Trap_Params)
+Multisource_probs <- function(Data_Params, Po_Params)
 		{
-		SS_Array_Hits <- array(NA, c(length(Trap_Params$Po_Array_Hits[,1,1]), length(Trap_Params$Po_Array_Hits[1,,1]), length(Trap_Params$Po_Array_Hits[1,1,]) ) )
-		SS_Array_Miss <- array(NA, c(length(Trap_Params$Po_Array_Miss[,1,1]), length(Trap_Params$Po_Array_Miss[1,,1]), length(Trap_Params$Po_Array_Miss[1,1,]) ) )
+    ####################################################
+    # SINGLE -  SOURCE
+		####################################################
+		if(Data_Params$n_sources == 1)
+		{
+		SS_Array_Hits <- array(NA, c(length(Po_Params$Po_Array_Hits[,1,1]), length(Po_Params$Po_Array_Hits[1,,1]), length(Po_Params$Po_Array_Hits[1,1,]) ) )
+		SS_Array_Miss <- array(NA, c(length(Po_Params$Po_Array_Miss[,1,1]), length(Po_Params$Po_Array_Miss[1,,1]), length(Po_Params$Po_Array_Miss[1,1,]) ) )
 
-			for(i in 1:length(Trap_Params$Po_Array_Hits[,1,1]))
+			for(i in 1:length(Po_Params$Po_Array_Hits[,1,1]))
 				{
-				for(j in 1:length(Trap_Params$Po_Array_Hits[1,,1]))
+				for(j in 1:length(Po_Params$Po_Array_Hits[1,,1]))
 					{
-					Hits_Prob <- mapply(dpois, Data_Params$Hits_Only$Hits, Trap_Params$Po_Array_Hits[i,j,])
-					Miss_Prob <- mapply(dpois, Data_Params$Miss_Only$Hits, Trap_Params$Po_Array_Miss[i,j,])
+					Hits_Prob <- mapply(dpois, Data_Params$Hits_Only$Hits, Po_Params$Po_Array_Hits[i,j,])
+					Miss_Prob <- mapply(dpois, Data_Params$Miss_Only$Hits, Po_Params$Po_Array_Miss[i,j,])
 					SS_Array_Hits[i,j,] <- Hits_Prob
 					SS_Array_Miss[i,j,] <- Miss_Prob
 					}
@@ -180,74 +155,65 @@ Single_Source_Probability <- function(Data_Params, Trap_Params)
 				SS_Miss <- SS_Miss/sum(SS_Miss)
 				SS_Both <- SS_Both/sum(SS_Both)
 				SS_Prob <- list(SS_Array_Hits = SS_Array_Hits, SS_Array_Miss = SS_Array_Miss, SS_Hits = SS_Hits, SS_Miss = SS_Miss, SS_Both = SS_Both)
+
 				return(SS_Prob)
-	     }
 
-###########################################################################################################################################
-#
-# The "DS_Po_Params" function returns the same matrices as "Single_Source_Probability" does, but with the capability of locating two sources
-#
-###########################################################################################################################################
+			}	 else{
+					Sum_hit_po <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
+  				Sum_miss_po <- matrix(NA, ncol = length(Data_Params$Miss_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
 
-DS_Po_Params <- function(Data_Params, Po_Params)
-		{
-	Sum_hit_po <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
-  Sum_miss_po <- matrix(NA, ncol = length(Data_Params$Miss_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
+  				################################################################################################
 
-  ################################################################################################
+					for(i in 1:length(Data_Params$AP_allocation[,1]))
+					{
+						for(j in 1:length(Data_Params$Hits_Only[,1]))
+						{
+							Sum_hit_po[i, j]  <- sum(Po_Params$Po_Array_Hits[,,j][Data_Params$AP_allocation[i, 1:Data_Params$n_sources]])
 
-	for(i in 1:length(Data_Params$AP_allocation[,1]))
-	{
+						}
+						for(j in 1:length(Data_Params$Miss_Only[,1]))
+						{
+							Sum_miss_po[i, j]  <- sum(Po_Params$Po_Array_Miss[,,j][Data_Params$AP_allocation[i, 1:Data_Params$n_sources]])
+						}
+					}
 
-  Sum_hit_po[i, ] <- mapply( sum, Po_Params$Po_Array_Hits[   Data_Params$Grid[Data_Params$AP_allocation[i,1],1],
-																	    Data_Params$Grid[Data_Params$AP_allocation[i,1],2] , ],
-				          Po_Params$Po_Array_Hits[   Data_Params$Grid[Data_Params$AP_allocation[i,2],1],
-																			Data_Params$Grid[Data_Params$AP_allocation[i,2],2], ])
+					S_hit_prob <- c()
+  			  S_miss_prob <- c()
 
-	Sum_miss_po[i, ] <- mapply(sum, Po_Params$Po_Array_Miss[   Data_Params$Grid[Data_Params$AP_allocation[i,1],1],
-																	    Data_Params$Grid[Data_Params$AP_allocation[i,1],2], ],
-			            Po_Params$Po_Array_Miss[   Data_Params$Grid[Data_Params$AP_allocation[i,2],1],
-																	    Data_Params$Grid[Data_Params$AP_allocation[i,2],2], ])
-	}
+					for(i in 1:length(Data_Params$AP_allocation[,1]))
+					{
+						S_hit_prob[i] <- prod(mapply(dpois, Data_Params$Hits_Only$Hits, Sum_hit_po[i,]))
+						S_miss_prob[i] <- prod(mapply(dpois, Data_Params$Miss_Only$Hits, Sum_miss_po[i,]))
+					}
 
-	TS_hit_prob <- c()
-  TS_miss_prob <- c()
+					S_both_prob <- S_hit_prob*S_miss_prob
+  				S_probs <- cbind(Data_Params$AP_allocation, S_hit_prob, S_miss_prob, S_both_prob)
 
-	for(i in 1:length(Data_Params$AP_allocation[,1]))
-	{
-	TS_hit_prob[i] <- prod(mapply(dpois, Data_Params$Hits_Only$Hits, Sum_hit_po[i,]))
-	TS_miss_prob[i] <- prod(mapply(dpois, Data_Params$Miss_Only$Hits, Sum_miss_po[i,]))
-	}
+				################################################################################################
 
-	TS_both_prob <- TS_hit_prob*TS_miss_prob
-  TS_probs <- cbind(Data_Params$AP_allocation, TS_hit_prob, TS_miss_prob, TS_both_prob)
+				final_hits <- c()
+				final_miss <- c()
+				final_both <- c()
 
-	################################################################################################
+				for(i in 1:length(Data_Params$Grid[,1]))
+				{
+					a <- apply(TS_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i), MARGIN=1)
+					final_hits[i] <- sum(S_probs[a, Data_Params$n_sources + 1])
+					final_miss[i] <- sum(S_probs[a, Data_Params$n_sources + 2])
+					final_both[i] <- sum(S_probs[a, Data_Params$n_sources + 3])
+				}
+				Source_Hits <- matrix(final_hits, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
+				Source_Miss <- matrix(final_miss, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
+			  Source_Both <- matrix(final_both, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
 
-	final_hits <- c()
-	final_miss <- c()
-	final_both <- c()
-	for(i in 1:max(TS_probs[,1]))
-	{
-	a <- subset(TS_probs, TS_probs[,1] == i | TS_probs[,2] == i)
-	final_hits[i] <- sum(a[,3])
-	b <- subset(TS_probs, TS_probs[,1] == i | TS_probs[,2] == i)
-	final_miss[i] <- sum(b[,4])
-	c <- subset(TS_probs, TS_probs[,1] == i | TS_probs[,2] == i)
-	final_both[i] <- sum(c[,5])
-	}
-	TwoD_Hits <- matrix(final_hits, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
-	TwoD_Miss <- matrix(final_miss, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
-	TwoD_Both <- matrix(final_both, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
+				Source_Hits <-  Source_Hits/sum(Source_Hits)
+				Source_Miss <-  Source_Miss/sum(Source_Miss)
+				Source_Both <-  Source_Both/sum(Source_Both)
+				Source_Prob <- list( Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both, S_probs = S_probs )
+				return(Source_Prob)
+				}
+			}
 
-	### NORMALISE ??????
-
-	TwoD_Hits <-  TwoD_Hits/sum(TwoD_Hits)
-	TwoD_Miss <-  TwoD_Miss/sum(TwoD_Miss)
-	TwoD_Both <-  TwoD_Both/sum(TwoD_Both)
-	TwoD_Prob <- list( TwoD_Hits = TwoD_Hits, TwoD_Miss = TwoD_Miss, TwoD_Both = TwoD_Both, TS_probs = TS_probs )
-	return(TwoD_Prob)
-}
 
 ###########################################################################################################################################
 #
@@ -255,12 +221,14 @@ DS_Po_Params <- function(Data_Params, Po_Params)
 #
 ###########################################################################################################################################
 
-plot1source <- function(Data_Params, SS_Prob)
+plot_sources <- function(Data_Params, Probs)
 		   {
+				 if(Data_Params$n_sources == 1)
+				 {
 				 #x11()
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, SS_Prob$SS_Hits, col = "darkgreen", nlevels = 5)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, SS_Prob$SS_Miss,col = "red",add=TRUE, nlevels = 5)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, SS_Prob$SS_Both,col = "blue", add=TRUE, nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Hits, col = "darkgreen", nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Miss,col = "red",add=TRUE, nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Both,col = "blue", add=TRUE, nlevels = 5)
 				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
 				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
 
@@ -269,44 +237,36 @@ plot1source <- function(Data_Params, SS_Prob)
 				 #persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat,  SS_Prob$SS_Hits, col = "green")
 				 #persp(Data_Params$Anchor_Points_Long,Data_Params$Anchor_Points_Lat,  SS_Prob$SS_Miss, col = "red")
 				 #persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat,  SS_Prob$SS_Both, col = "blue")
-			 }
 
-###########################################################################################################################################
-#
-# The "plot2source" function plots a contour map of the two source probabilities
-#
-###########################################################################################################################################
+				 #par(mfrow=c(2,2))
+			 } else {
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Hits, col = "darkgreen", nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Miss,col = "red",add=TRUE, nlevels = 3)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Both,col = "blue",add=TRUE, nlevels = 5)
+				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
+				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
+				#symbols(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude, circles = rep(Data_Params$Trap_Radius, length(Data_Params$Hits_Only$Longitude)), add = T, inches = F)
+				#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
 
-plot2source <- function(Data_Params, Two_Source, DPM_SIM)
-		   {
-			#par(mfrow=c(2,2))
+				#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Hits, col = "darkgreen", nlevels = 5)
+				#	points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
+				#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
 
-			contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Hits, col = "darkgreen", nlevels = 5)
-			contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Miss,col = "red",add=TRUE, nlevels = 3)
-			contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Both,col = "blue",add=TRUE, nlevels = 5)
-			points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
-			points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
-			#symbols(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude, circles = rep(Data_Params$Trap_Radius, length(Data_Params$Hits_Only$Longitude)), add = T, inches = F)
-			#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
+				#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Miss,col = "red", nlevels = 5)
+				#points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
 
-			#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Hits, col = "darkgreen", nlevels = 5)
-			#	points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
-			#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
-
-			#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Miss,col = "red", nlevels = 5)
-			#points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
-
-			#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Both,col = "blue", nlevels = 5)
-			#points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
-			#points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
-			#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
-			#
-			#x11()
-			#par(mfrow=c(1,3))
-			#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Hits,  col = "green")
-			#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Miss,  col = "red")
-			#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Both,  col = "blue")
-		}
+				#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Both,col = "blue", nlevels = 5)
+				#points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
+				#points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
+				#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
+				#
+				#x11()
+				#par(mfrow=c(1,3))
+				#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Hits,  col = "green")
+				#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Miss,  col = "red")
+				#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Both,  col = "blue")
+			}
+			}
 
 ###########################################################################################################################################
 ###########################################################################################################################################
@@ -317,39 +277,41 @@ plot2source <- function(Data_Params, Two_Source, DPM_SIM)
 ## The only input required is the Longitude/Latitude points of said traps,
 ## along with the number of hits associated with each (non negative integer)
 
-setwd("/home/mstevens/Desktop/presence_absence/Finals/data")
+setwd("/home/mstevens/Desktop/Presence Absence/Presence_Absence-master/Finals/data")
 
 ###########################################################################################################################################
-My_trap_data <- read.table("Dummy.txt", header = FALSE)
+My_trap_data <- read.table("Dummy_4_Source.txt", header = FALSE)
 ###########################################################################################################################################
 
 ############### ONE SOURCE ##############
 ## Extract ALL Parameters from your data
-Data_params1S <- Extract_Params1S(My_trap_data, x_grid_cells = 50, y_grid_cells = 50, Trap_Radius = 2, Guard_Rail = 1)
+Data_params1S <- Extract_Params(My_trap_data, x_grid_cells = 100, y_grid_cells = 100, Trap_Radius = 5, Guard_Rail = 5, n_sources = 1)
 
 ## Compute Poisson Parameters
 Trap_Po_Params <- Trap_Po_Parameters(Data_params1S)
 
 ## Compute probability matrices
-Single_Source_Prob <- Single_Source_Probability(Data_params1S, Trap_Po_Params)
+#Single_Source_Prob <- Single_Source_Probability(Data_params1S, Trap_Po_Params)
+Single_Source_Prob <- Multisource_probs(Data_params1S, Trap_Po_Params)
 
 ## Contour plot of the matrices
-plot1source(Data_params1S, Single_Source_Prob)
+x11()
+plot_sources(Data_params1S, Single_Source_Prob)
 
 ############## TWO SOURCE ###########
 ## Extract ALL Parameters from your data
 
-Data_params2S <- Extract_Params2S(My_trap_data, x_grid_cells = 10, y_grid_cells = 10, Guard_Rail = 1, Trap_Radius = 0.5)
+Data_params2S <- Extract_Params(My_trap_data, x_grid_cells = 6, y_grid_cells = 6, Guard_Rail = 3, Trap_Radius = 1, n_sources = 4)
 
 ## Compute Poisson Parameters
 Trap_Po_Params <- Trap_Po_Parameters(Data_params2S)
 
 ## Compute probability matrices
-Two_Source_Prob <- DS_Po_Params(Data_params2S, Trap_Po_Params)
+Two_Source_Prob <- Multisource_probs(Data_params2S, Trap_Po_Params)
 
 ## Contour plot of the matrices
 x11()
-plot2source(Data_params2S, Two_Source_Prob)
+plot_sources(Data_params2S, Two_Source_Prob)
 
 ###################
 ###################
