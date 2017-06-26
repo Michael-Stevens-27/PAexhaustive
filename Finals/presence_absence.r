@@ -65,15 +65,13 @@ Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time
         }
       Hits_Only <- subset(Trap_Data, Hits != 0)
 			Miss_Only <- subset(Trap_Data, Hits == 0)
-			Grid <- expand.grid(1:(x_grid_cells), 1:(y_grid_cells))
-			names(Grid) = c("x", "y")
 			pairwise <- pairwise_distance(Trap_Data)
 			Sd_x <- 0.2*mean(pairwise$distance, na.rm = TRUE)
 			Sd_y <- 0.2*mean(pairwise$distance, na.rm = TRUE)
 
       params <- list(n_sources = n_sources, x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
 				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
-				    Grid = Grid, AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only)
+				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only)
 			return(params)
 			}
 
@@ -148,8 +146,8 @@ Multisource_probs <- function(Data_Params, Po_Params)
 					SS_Array_Miss[i,j,] <- Miss_Prob
 					}
 				}
-				SS_Hits <- apply(SS_Array_Hits, c(1,2), prod)
-				SS_Miss <- apply(SS_Array_Miss, c(1,2), prod)
+				SS_Hits <- exp(apply(log(SS_Array_Hits), c(1,2), sum))
+				SS_Miss <- exp(apply(log(SS_Array_Miss), c(1,2), sum))
 				SS_Both <- SS_Hits * SS_Miss
 				SS_Hits <- SS_Hits/sum(SS_Hits)
 				SS_Miss <- SS_Miss/sum(SS_Miss)
@@ -182,8 +180,8 @@ Multisource_probs <- function(Data_Params, Po_Params)
 
 					for(i in 1:length(Data_Params$AP_allocation[,1]))
 					{
-						S_hit_prob[i] <- prod(mapply(dpois, Data_Params$Hits_Only$Hits, Sum_hit_po[i,]))
-						S_miss_prob[i] <- prod(mapply(dpois, Data_Params$Miss_Only$Hits, Sum_miss_po[i,]))
+						S_hit_prob[i] <- exp(sum(log(mapply(dpois, Data_Params$Hits_Only$Hits, Sum_hit_po[i,]))))
+						S_miss_prob[i] <- exp(sum(log(mapply(dpois, Data_Params$Miss_Only$Hits, Sum_miss_po[i,]))))
 					}
 
 					S_both_prob <- S_hit_prob*S_miss_prob
@@ -195,7 +193,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				final_miss <- c()
 				final_both <- c()
 
-				for(i in 1:length(Data_Params$Grid[,1]))
+				for(i in 1:((Data_Params$x_grid_cells)*(Data_Params$y_grid_cells)))
 				{
 					a <- apply(S_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i), MARGIN=1)
 					final_hits[i] <- sum(S_probs[a, Data_Params$n_sources + 1])
@@ -246,11 +244,9 @@ plot_sources <- function(Data_Params, Probs)
 				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
 				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
 				#symbols(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude, circles = rep(Data_Params$Trap_Radius, length(Data_Params$Hits_Only$Longitude)), add = T, inches = F)
-				#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
 
 				#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Hits, col = "darkgreen", nlevels = 5)
 				#	points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
-				#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
 
 				#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Miss,col = "red", nlevels = 5)
 				#points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
@@ -274,18 +270,18 @@ plot_sources <- function(Data_Params, Probs)
 
 ##_____________USER INPUT ______________##
 
-## The only input required is the Longitude/Latitude points of said traps,
-## along with the number of hits associated with each (non negative integer)
+## The only input required is the Longitude/Latitude points of said traps and
+## the number of hits associated with each (non negative integer)
 
 setwd("/home/mstevens/Desktop/Presence Absence/Presence_Absence-master/Finals/data")
 
 ###########################################################################################################################################
-My_trap_data <- read.table("Dummy_4_Source.txt", header = FALSE)
+My_trap_data <- read.table("FootballToyExample.txt", header = FALSE)
 ###########################################################################################################################################
 
 ############### ONE SOURCE ##############
 ## Extract ALL Parameters from your data
-Data_params1S <- Extract_Params(My_trap_data, x_grid_cells = 100, y_grid_cells = 100, Trap_Radius = 5, Guard_Rail = 5, n_sources = 1)
+Data_params1S <- Extract_Params(My_trap_data, x_grid_cells = 100, y_grid_cells = 100, Trap_Radius = 1, Guard_Rail = 5, n_sources = 1)
 
 ## Compute Poisson Parameters
 Trap_Po_Params <- Trap_Po_Parameters(Data_params1S)
@@ -301,13 +297,18 @@ plot_sources(Data_params1S, Single_Source_Prob)
 ############## TWO SOURCE ###########
 ## Extract ALL Parameters from your data
 
-Data_params2S <- Extract_Params(My_trap_data, x_grid_cells = 10, y_grid_cells = 10, Guard_Rail = 3, Trap_Radius = 1, n_sources = 2)
+Data_params2S <- Extract_Params(My_trap_data, x_grid_cells = 8, y_grid_cells = 8, Guard_Rail = 0.5, Trap_Radius = 0.3, n_sources = 3)
 
 ## Compute Poisson Parameters
 Trap_Po_Params <- Trap_Po_Parameters(Data_params2S)
 
 ## Compute probability matrices
 Two_Source_Prob <- Multisource_probs(Data_params2S, Trap_Po_Params)
+
+#x11()
+#persp(expandMatrix(Two_Source_Prob$Source_Both, 100, 100), phi = 20)
+#x11()
+#persp(expandMatrix(Two_Source_Prob$Source_Hits, 100, 100), phi = 20)
 
 ## Contour plot of the matrices
 x11()

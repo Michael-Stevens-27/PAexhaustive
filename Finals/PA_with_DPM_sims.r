@@ -33,12 +33,7 @@ params$output$latitude_cells <- 50
 
 m <- geoMCMC(data=d,params= params)
 
-
-
-###########################################################################################################################################
-
-###### FUNCTIONS ######
-
+##_____________FUNCTIONS ______________##
 ###########################################################################################################################################
 #
 # The "pairwise_distance" function returns half the average of the minimum distances between traps. This value takes the place of the
@@ -98,15 +93,13 @@ Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time
         }
       Hits_Only <- subset(Trap_Data, Hits != 0)
 			Miss_Only <- subset(Trap_Data, Hits == 0)
-			Grid <- expand.grid(1:(x_grid_cells), 1:(y_grid_cells))
-			names(Grid) = c("x", "y")
 			pairwise <- pairwise_distance(Trap_Data)
 			Sd_x <- 0.2*mean(pairwise$distance, na.rm = TRUE)
 			Sd_y <- 0.2*mean(pairwise$distance, na.rm = TRUE)
 
       params <- list(n_sources = n_sources, x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
 				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
-				    Grid = Grid, AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only)
+				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only)
 			return(params)
 			}
 
@@ -161,12 +154,6 @@ Trap_Po_Parameters <- function(Params)
 #
 ###########################################################################################################################################
 
-###########################################################################################################################################
-#
-# The "Multisource_probs" function returns the porbability for source locations. Given the user specifies the number of sources expected.
-#
-###########################################################################################################################################
-
 Multisource_probs <- function(Data_Params, Po_Params)
 		{
     ####################################################
@@ -187,8 +174,8 @@ Multisource_probs <- function(Data_Params, Po_Params)
 					SS_Array_Miss[i,j,] <- Miss_Prob
 					}
 				}
-				SS_Hits <- apply(SS_Array_Hits, c(1,2), prod)
-				SS_Miss <- apply(SS_Array_Miss, c(1,2), prod)
+				SS_Hits <- exp(apply(log(SS_Array_Hits), c(1,2), sum))
+				SS_Miss <- exp(apply(log(SS_Array_Miss), c(1,2), sum))
 				SS_Both <- SS_Hits * SS_Miss
 				SS_Hits <- SS_Hits/sum(SS_Hits)
 				SS_Miss <- SS_Miss/sum(SS_Miss)
@@ -221,8 +208,8 @@ Multisource_probs <- function(Data_Params, Po_Params)
 
 					for(i in 1:length(Data_Params$AP_allocation[,1]))
 					{
-						S_hit_prob[i] <- prod(mapply(dpois, Data_Params$Hits_Only$Hits, Sum_hit_po[i,]))
-						S_miss_prob[i] <- prod(mapply(dpois, Data_Params$Miss_Only$Hits, Sum_miss_po[i,]))
+						S_hit_prob[i] <- exp(sum(log(mapply(dpois, Data_Params$Hits_Only$Hits, Sum_hit_po[i,]))))
+						S_miss_prob[i] <- exp(sum(log(mapply(dpois, Data_Params$Miss_Only$Hits, Sum_miss_po[i,]))))
 					}
 
 					S_both_prob <- S_hit_prob*S_miss_prob
@@ -234,7 +221,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				final_miss <- c()
 				final_both <- c()
 
-				for(i in 1:length(Data_Params$Grid[,1]))
+				for(i in 1:((Data_Params$x_grid_cells)*(Data_Params$y_grid_cells)))
 				{
 					a <- apply(S_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i), MARGIN=1)
 					final_hits[i] <- sum(S_probs[a, Data_Params$n_sources + 1])
@@ -265,9 +252,9 @@ plot_sources <- function(Data_Params, Probs)
 				 if(Data_Params$n_sources == 1)
 				 {
 				 #x11()
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Hits, col = "darkgreen", nlevels = 5)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Miss,col = "red",add=TRUE, nlevels = 5)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Both,col = "blue", add=TRUE, nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Hits, col = "darkgreen", nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Miss,col = "red",add=TRUE, nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Both,col = "blue", add=TRUE, nlevels = 5)
 				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
 				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
 
@@ -285,11 +272,9 @@ plot_sources <- function(Data_Params, Probs)
 				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
 				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
 				#symbols(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude, circles = rep(Data_Params$Trap_Radius, length(Data_Params$Hits_Only$Longitude)), add = T, inches = F)
-				#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
 
 				#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Hits, col = "darkgreen", nlevels = 5)
 				#	points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
-				#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
 
 				#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Miss,col = "red", nlevels = 5)
 				#points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
@@ -310,6 +295,7 @@ plot_sources <- function(Data_Params, Probs)
 ###########################################################################################################################################
 ###########################################################################################################################################
 ###########################################################################################################################################
+
 
 # _______________________________________________________
 # RUN PRESENCE/ABSENCE WITH THESE PARAMS
