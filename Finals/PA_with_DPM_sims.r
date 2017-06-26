@@ -8,28 +8,37 @@ library(gRbase) ## For the "combnPrim" function, efficiently listing combination
 # _______________________________________________________
 library(RgeoProfile)
 # generate simulated data
-sim <- rDPM(50, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 1, sigma = 1, tau = 12)
-sim
+#sim <- rDPM(50, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 1, sigma = 1, tau = 12)
+#sim
 ###########################################################################################################################################
 
 # allocate hits and misses to crimes
-hits <- sample(0:1,length(sim$longitude),replace=TRUE)
+#hits <- sample(0:1,length(sim$longitude),replace=TRUE)
 
-trap_data <-  cbind(sim$longitude,sim$latitude, hits)
-colnames(trap_data) <- c("x", "y", "hits")
-head(trap_data)
+#trap_data <-  cbind(sim$longitude,sim$latitude, hits)
+#colnames(trap_data) <- c("x", "y", "hits")
+#head(trap_data)
+
+setwd("/home/mstevens/Desktop/Presence Absence/Presence_Absence-master/Finals/data")
+trap_data <- read.table("FootballToyExample.txt", header = FALSE)
+
+dummy_source <- read.table("Dummy_sources.txt", header = FALSE)
+
 
 # _______________________________________________________
 # RUN AS DPM TO EXTRACT PARAMS
 # _______________________________________________________
 # convert
-d <- geoData(sim$longitude,sim$latitude)
-s <- geoDataSource(sim$source_lon,sim$source_lat)
+d <- geoData(trap_data$V1,trap_data$V2)
+s <- geoDataSource(dummy_source$V1,dummy_source$V2)
 
 # params
-params <- geoParams(data = d, sigma_mean = 1, sigma_squared_shape = 2, samples= 50000, chains = 20, burnin = 1000, priorMean_longitude = mean(d$longitude), priorMean_latitude = mean(d$latitude), guardRail = 0.05)
-params$output$longitude_cells <- 50
-params$output$latitude_cells <- 50
+params <- geoParams(data = d, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(d$longitude), priorMean_latitude = mean(d$latitude), guardRail = 0.1)
+params$output$longitude_cells <-300
+params$output$latitude_cells <- 300
+
+params$output$longitude_minMax
+all_params$Long_Max_Bound
 
 m <- geoMCMC(data=d,params= params)
 
@@ -73,16 +82,24 @@ pairwise_distance <- function(points){
 #
 ###########################################################################################################################################
 
+
+## lat lon min max difference between max and min, plus minus guard rail times difference
+
+
 Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6, n_sources = 1)
 			{
 			colnames(Trap_Data) <- c("Longitude", "Latitude", "Hits")
 			Trap_Data <- data.frame(Trap_Data)
+			long_diff <- (max(Trap_Data$Longitude) - min(Trap_Data$Longitude))
+			lat_diff <- (max(Trap_Data$Latitude) - min(Trap_Data$Latitude))
+
 			MnMx_Long <- c(min(Trap_Data$Longitude), max(Trap_Data$Longitude))
 			MnMx_Lat <- c(min(Trap_Data$Latitude), max(Trap_Data$Latitude))
-			Long_Max_Bound <- MnMx_Long[2] + Guard_Rail
-			Long_Min_Bound <- MnMx_Long[1] - Guard_Rail
-			Lat_Max_Bound <-  MnMx_Lat[2] + Guard_Rail
-			Lat_Min_Bound <- MnMx_Lat[1] - Guard_Rail
+
+			Long_Max_Bound <- MnMx_Long[2] + (Guard_Rail*long_diff)
+			Long_Min_Bound <- MnMx_Long[1] - (Guard_Rail*long_diff)
+			Lat_Max_Bound <-  MnMx_Lat[2] + (Guard_Rail*lat_diff)
+			Lat_Min_Bound <- MnMx_Lat[1] - (Guard_Rail*lat_diff)
 			Anchor_Points_Long <- seq(min(Long_Min_Bound,Long_Max_Bound), max(Long_Min_Bound,Long_Max_Bound), abs(Long_Max_Bound-Long_Min_Bound)/(x_grid_cells - 1))
 			Anchor_Points_Lat <- seq(min(Lat_Min_Bound, Lat_Max_Bound), max(Lat_Min_Bound, Lat_Max_Bound), abs(Lat_Max_Bound-Lat_Min_Bound)/(y_grid_cells - 1))
 			if(n_sources > 1)
@@ -99,7 +116,7 @@ Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time
 
       params <- list(n_sources = n_sources, x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
 				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
-				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only)
+				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only, Long_Max_Bound = Long_Max_Bound)
 			return(params)
 			}
 
@@ -240,6 +257,37 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				}
 			}
 
+###########################################################################################################################################
+# function to resize this sub-matrix to the original resolution
+# mat - matrix to be resized
+# output_long/lat - new number of long/let cells
+###########################################################################################################################################
+
+expandMatrix <- function(mat,output_long,output_lat)
+  {
+	# define function expanding vector
+	expandVector <- function(input_vec,output_length)
+		{
+			my_vec <- input_vec
+			desired_length <- output_length
+			new_vec <- rep(NA, desired_length)
+
+			vec_ID <- seq(1,length(my_vec),length=desired_length)
+
+			for(i in 1:length(new_vec))
+				{
+					ifelse(vec_ID[i] %% 1 == 0,
+		new_vec[i] <- my_vec[floor(vec_ID[i])],
+		new_vec[i] <- mean((1-vec_ID[i] %% 1) * my_vec[floor(vec_ID[i])] + (vec_ID[i] %% 1) * my_vec[ceiling(vec_ID[i])])
+	)
+				}
+  return(new_vec)
+		}
+  mat1 <- apply(mat,2, function(x) expandVector(x, output_long))
+  mat2 <- apply(mat1,1, function(x) expandVector(x, output_lat))
+  return(t(mat2))
+  }
+
 
 ###########################################################################################################################################
 #
@@ -296,14 +344,12 @@ plot_sources <- function(Data_Params, Probs)
 ###########################################################################################################################################
 ###########################################################################################################################################
 
-
 # _______________________________________________________
 # RUN PRESENCE/ABSENCE WITH THESE PARAMS
 # _______________________________________________________
 trap_data <- as.data.frame(trap_data)
 
-all_params <- Extract_Paramss(trap_data,  x_grid_cells = 49, y_grid_cells = 49, n_sources = 1)
-
+all_params <- Extract_Params(trap_data,  x_grid_cells = 12, y_grid_cells = 12, n_sources = 3, Trap_Radius = 0.01, Guard_Rail = 0.1)
 po_params <- Trap_Po_Parameters(all_params)
 
 source_probs <- Multisource_probs(all_params, po_params)
@@ -314,11 +360,12 @@ hits <- geoData(all_params$Hits_Only$Longitude, all_params$Hits_Only$Latitude)
 
 misses <- geoDataSource(all_params$Miss_Only$Longitude,all_params$Miss_Only$Latitude)
 
-s <- geoDataSource(sim$source_lon,sim$source_lat)
 
 ######
 
 # the map alone
+
+a <- expandMatrix(source_probs$Source_Both, 300, 300)
 
 x11()
 geoPlotMap(data = d, source = s, params = params, breakPercent = seq(0, 20, 2), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
@@ -327,12 +374,13 @@ geoPlotMap(data = d, source = s, params = params, breakPercent = seq(0, 20, 2), 
 
 # both
 x11()
-geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(0, 100, 10), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
-           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(source_probs$Source_Both))
+geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(0, 5, 0.5), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
+           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-a))
+
 # hits
 x11()
 geoPlotMap(data = hits, params = params, breakPercent = seq(0, 100, 10), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
-           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(source_probs$Source_Hits))
+           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-source_probs$Source_Hits))
 
 
 # misses

@@ -45,16 +45,24 @@ pairwise_distance <- function(points){
 #
 ###########################################################################################################################################
 
+
+## lat lon min max difference between max and min, plus minus guard rail times difference
+
+
 Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6, n_sources = 1)
 			{
 			colnames(Trap_Data) <- c("Longitude", "Latitude", "Hits")
 			Trap_Data <- data.frame(Trap_Data)
+			long_diff <- (max(Trap_Data$Longitude) - min(Trap_Data$Longitude))
+			lat_diff <- (max(Trap_Data$Latitude) - min(Trap_Data$Latitude))
+
 			MnMx_Long <- c(min(Trap_Data$Longitude), max(Trap_Data$Longitude))
 			MnMx_Lat <- c(min(Trap_Data$Latitude), max(Trap_Data$Latitude))
-			Long_Max_Bound <- MnMx_Long[2] + Guard_Rail
-			Long_Min_Bound <- MnMx_Long[1] - Guard_Rail
-			Lat_Max_Bound <-  MnMx_Lat[2] + Guard_Rail
-			Lat_Min_Bound <- MnMx_Lat[1] - Guard_Rail
+
+			Long_Max_Bound <- MnMx_Long[2] + (Guard_Rail*long_diff)
+			Long_Min_Bound <- MnMx_Long[1] - (Guard_Rail*long_diff)
+			Lat_Max_Bound <-  MnMx_Lat[2] + (Guard_Rail*lat_diff)
+			Lat_Min_Bound <- MnMx_Lat[1] - (Guard_Rail*lat_diff)
 			Anchor_Points_Long <- seq(min(Long_Min_Bound,Long_Max_Bound), max(Long_Min_Bound,Long_Max_Bound), abs(Long_Max_Bound-Long_Min_Bound)/(x_grid_cells - 1))
 			Anchor_Points_Lat <- seq(min(Lat_Min_Bound, Lat_Max_Bound), max(Lat_Min_Bound, Lat_Max_Bound), abs(Lat_Max_Bound-Lat_Min_Bound)/(y_grid_cells - 1))
 			if(n_sources > 1)
@@ -71,7 +79,7 @@ Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time
 
       params <- list(n_sources = n_sources, x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
 				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
-				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only)
+				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only, Long_Max_Bound = Long_Max_Bound)
 			return(params)
 			}
 
@@ -211,6 +219,37 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				return(Source_Prob)
 				}
 			}
+
+###########################################################################################################################################
+# function to resize this sub-matrix to the original resolution
+# mat - matrix to be resized
+# output_long/lat - new number of long/let cells
+###########################################################################################################################################
+
+expandMatrix <- function(mat,output_long,output_lat)
+  {
+	# define function expanding vector
+	expandVector <- function(input_vec,output_length)
+		{
+			my_vec <- input_vec
+			desired_length <- output_length
+			new_vec <- rep(NA, desired_length)
+
+			vec_ID <- seq(1,length(my_vec),length=desired_length)
+
+			for(i in 1:length(new_vec))
+				{
+					ifelse(vec_ID[i] %% 1 == 0,
+		new_vec[i] <- my_vec[floor(vec_ID[i])],
+		new_vec[i] <- mean((1-vec_ID[i] %% 1) * my_vec[floor(vec_ID[i])] + (vec_ID[i] %% 1) * my_vec[ceiling(vec_ID[i])])
+	)
+				}
+  return(new_vec)
+		}
+  mat1 <- apply(mat,2, function(x) expandVector(x, output_long))
+  mat2 <- apply(mat1,1, function(x) expandVector(x, output_lat))
+  return(t(mat2))
+  }
 
 
 ###########################################################################################################################################
