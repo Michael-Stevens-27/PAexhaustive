@@ -22,7 +22,7 @@ library(RgeoProfile)
 setwd("/home/mstevens/Desktop/Presence Absence/Presence_Absence-master/Finals/data")
 trap_data <- read.table("FootballToyExample.txt", header = FALSE)
 
-dummy_source <- read.table("Dummy_sources.txt", header = FALSE)
+dummy_source <- read.table("Joe_Sources.txt", header = FALSE)
 
 
 # _______________________________________________________
@@ -33,7 +33,7 @@ d <- geoData(trap_data$V1,trap_data$V2)
 s <- geoDataSource(dummy_source$V1,dummy_source$V2)
 
 # params
-params <- geoParams(data = d, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(d$longitude), priorMean_latitude = mean(d$latitude), guardRail = 0.1)
+params <- geoParams(data = d, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(d$longitude), priorMean_latitude = mean(d$latitude), guardRail = 0.05)
 params$output$longitude_cells <-300
 params$output$latitude_cells <- 300
 
@@ -81,10 +81,6 @@ pairwise_distance <- function(points){
 # "n_sources" sources from the total number of grid cells.
 #
 ###########################################################################################################################################
-
-
-## lat lon min max difference between max and min, plus minus guard rail times difference
-
 
 Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6, n_sources = 1)
 			{
@@ -207,33 +203,41 @@ Multisource_probs <- function(Data_Params, Po_Params)
 
   				################################################################################################
 
-					for(i in 1:length(Data_Params$AP_allocation[,1]))
-					{
-						for(j in 1:length(Data_Params$Hits_Only[,1]))
+					for(j in 1:length(Data_Params$Hits_Only[,1]))
 						{
-							Sum_hit_po[i, j]  <- sum(Po_Params$Po_Array_Hits[,,j][Data_Params$AP_allocation[i, 1:Data_Params$n_sources]])
-
+							matrix_h <- Po_Params$Po_Array_Hits[,,j]
+							Sum_hit_po[, j] <- apply(Data_Params$AP_allocation, FUN = function(x) sum(matrix_h[x]), MARGIN = 1)
 						}
 						for(j in 1:length(Data_Params$Miss_Only[,1]))
 						{
-							Sum_miss_po[i, j]  <- sum(Po_Params$Po_Array_Miss[,,j][Data_Params$AP_allocation[i, 1:Data_Params$n_sources]])
+							matrix_m <- Po_Params$Po_Array_Miss[,,j]
+							Sum_miss_po[, j] <- apply(Data_Params$AP_allocation, FUN = function(x) sum(matrix_m[x]), MARGIN = 1)
 						}
-					}
 
+					MATRIX_A <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
+  			  MATRIX_B <- matrix(NA, ncol = length(Data_Params$Miss_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
 					S_hit_prob <- c()
-  			  S_miss_prob <- c()
+					S_miss_prob <- c()
 
-					for(i in 1:length(Data_Params$AP_allocation[,1]))
+					for(i in 1:length(Data_Params$Hits_Only[,1]))
 					{
-						S_hit_prob[i] <- exp(sum(log(mapply(dpois, Data_Params$Hits_Only$Hits, Sum_hit_po[i,]))))
-						S_miss_prob[i] <- exp(sum(log(mapply(dpois, Data_Params$Miss_Only$Hits, Sum_miss_po[i,]))))
+						MATRIX_A[,i] <- mapply(dpois, 1, Sum_hit_po[,i])
 					}
+						MATRIX_A <- log(MATRIX_A)
+						S_hit_prob <- apply(MATRIX_A, FUN = sum, MARGIN = 1)
+						S_hit_prob <- exp(S_hit_prob)
+
+					for(i in 1:length(Data_Params$Miss_Only[,1]))
+					{
+						MATRIX_B[,i] <- mapply(dpois, 0, Sum_miss_po[,i])
+					}
+						MATRIX_B <- log(MATRIX_B)
+						S_miss_prob <- apply(MATRIX_B, FUN = sum, MARGIN = 1)
+						S_miss_prob <- exp(S_miss_prob)
 
 					S_both_prob <- S_hit_prob*S_miss_prob
   				S_probs <- cbind(Data_Params$AP_allocation, S_hit_prob, S_miss_prob, S_both_prob)
-
 				################################################################################################
-
 				final_hits <- c()
 				final_miss <- c()
 				final_both <- c()
@@ -252,10 +256,11 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				Source_Hits <-  Source_Hits/sum(Source_Hits)
 				Source_Miss <-  Source_Miss/sum(Source_Miss)
 				Source_Both <-  Source_Both/sum(Source_Both)
-				Source_Prob <- list( Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both, S_probs = S_probs )
+				Source_Prob <- list( Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both, Sum_hit_po = Sum_hit_po)
 				return(Source_Prob)
 				}
 			}
+
 
 ###########################################################################################################################################
 # function to resize this sub-matrix to the original resolution
@@ -349,7 +354,7 @@ plot_sources <- function(Data_Params, Probs)
 # _______________________________________________________
 trap_data <- as.data.frame(trap_data)
 
-all_params <- Extract_Params(trap_data,  x_grid_cells = 12, y_grid_cells = 12, n_sources = 3, Trap_Radius = 0.01, Guard_Rail = 0.1)
+all_params <- Extract_Params(trap_data,  x_grid_cells = 8, y_grid_cells = 8, n_sources = 3, Trap_Radius = 0.01, Guard_Rail = 0.1)
 po_params <- Trap_Po_Parameters(all_params)
 
 source_probs <- Multisource_probs(all_params, po_params)
@@ -370,10 +375,12 @@ a <- expandMatrix(source_probs$Source_Both, 300, 300)
 x11()
 geoPlotMap(data = d, source = s, params = params, breakPercent = seq(0, 20, 2), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
            crimeCol = "black", crimeCex = 2, sourceCol = "red", sourceCex = 2, surface = m$geoProfile)
+
 ######
 
 # both
 x11()
+
 geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(0, 5, 0.5), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
            crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-a))
 
@@ -390,7 +397,6 @@ geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(0, 
 
 #x11()
 #perspGP(surface=t(probs$TwoD_miss),aggregate_size=5,surface_type="prob",phiGP=70,thetaGP=-10)
-
 
 #x11()
 #perspGP(surface=t(probs$TwoD_Both),aggregate_size=3,surface_type="prob")

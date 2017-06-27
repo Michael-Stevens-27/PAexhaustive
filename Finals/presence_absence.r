@@ -170,33 +170,41 @@ Multisource_probs <- function(Data_Params, Po_Params)
 
   				################################################################################################
 
-					for(i in 1:length(Data_Params$AP_allocation[,1]))
-					{
-						for(j in 1:length(Data_Params$Hits_Only[,1]))
+					for(j in 1:length(Data_Params$Hits_Only[,1]))
 						{
-							Sum_hit_po[i, j]  <- sum(Po_Params$Po_Array_Hits[,,j][Data_Params$AP_allocation[i, 1:Data_Params$n_sources]])
-
+							matrix_h <- Po_Params$Po_Array_Hits[,,j]
+							Sum_hit_po[, j] <- apply(Data_Params$AP_allocation, FUN = function(x) sum(matrix_h[x]), MARGIN = 1)
 						}
 						for(j in 1:length(Data_Params$Miss_Only[,1]))
 						{
-							Sum_miss_po[i, j]  <- sum(Po_Params$Po_Array_Miss[,,j][Data_Params$AP_allocation[i, 1:Data_Params$n_sources]])
+							matrix_m <- Po_Params$Po_Array_Miss[,,j]
+							Sum_miss_po[, j] <- apply(Data_Params$AP_allocation, FUN = function(x) sum(matrix_m[x]), MARGIN = 1)
 						}
-					}
 
+					MATRIX_A <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
+  			  MATRIX_B <- matrix(NA, ncol = length(Data_Params$Miss_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
 					S_hit_prob <- c()
-  			  S_miss_prob <- c()
+					S_miss_prob <- c()
 
-					for(i in 1:length(Data_Params$AP_allocation[,1]))
+					for(i in 1:length(Data_Params$Hits_Only[,1]))
 					{
-						S_hit_prob[i] <- exp(sum(log(mapply(dpois, Data_Params$Hits_Only$Hits, Sum_hit_po[i,]))))
-						S_miss_prob[i] <- exp(sum(log(mapply(dpois, Data_Params$Miss_Only$Hits, Sum_miss_po[i,]))))
+						MATRIX_A[,i] <- mapply(dpois, 1, Sum_hit_po[,i])
 					}
+						MATRIX_A <- log(MATRIX_A)
+						S_hit_prob <- apply(MATRIX_A, FUN = sum, MARGIN = 1)
+						S_hit_prob <- exp(S_hit_prob)
+
+					for(i in 1:length(Data_Params$Miss_Only[,1]))
+					{
+						MATRIX_B[,i] <- mapply(dpois, 0, Sum_miss_po[,i])
+					}
+						MATRIX_B <- log(MATRIX_B)
+						S_miss_prob <- apply(MATRIX_B, FUN = sum, MARGIN = 1)
+						S_miss_prob <- exp(S_miss_prob)
 
 					S_both_prob <- S_hit_prob*S_miss_prob
   				S_probs <- cbind(Data_Params$AP_allocation, S_hit_prob, S_miss_prob, S_both_prob)
-
 				################################################################################################
-
 				final_hits <- c()
 				final_miss <- c()
 				final_both <- c()
@@ -215,7 +223,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				Source_Hits <-  Source_Hits/sum(Source_Hits)
 				Source_Miss <-  Source_Miss/sum(Source_Miss)
 				Source_Both <-  Source_Both/sum(Source_Both)
-				Source_Prob <- list( Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both, S_probs = S_probs )
+				Source_Prob <- list( Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both, Sum_hit_po = Sum_hit_po)
 				return(Source_Prob)
 				}
 			}
@@ -320,7 +328,7 @@ My_trap_data <- read.table("FootballToyExample.txt", header = FALSE)
 
 ############### ONE SOURCE ##############
 ## Extract ALL Parameters from your data
-Data_params1S <- Extract_Params(My_trap_data, x_grid_cells = 100, y_grid_cells = 100, Trap_Radius = 1, Guard_Rail = 5, n_sources = 1)
+Data_params1S <- Extract_Params(My_trap_data, x_grid_cells = 10, y_grid_cells = 10, Trap_Radius = 1, Guard_Rail = 5, n_sources = 1)
 
 ## Compute Poisson Parameters
 Trap_Po_Params <- Trap_Po_Parameters(Data_params1S)
@@ -336,7 +344,7 @@ plot_sources(Data_params1S, Single_Source_Prob)
 ############## TWO SOURCE ###########
 ## Extract ALL Parameters from your data
 
-Data_params2S <- Extract_Params(My_trap_data, x_grid_cells = 8, y_grid_cells = 8, Guard_Rail = 0.5, Trap_Radius = 0.3, n_sources = 3)
+Data_params2S <- Extract_Params(My_trap_data, x_grid_cells = 2, y_grid_cells = 2, Guard_Rail = 0.5, Trap_Radius = 0.3, n_sources = 2)
 
 ## Compute Poisson Parameters
 Trap_Po_Params <- Trap_Po_Parameters(Data_params2S)
