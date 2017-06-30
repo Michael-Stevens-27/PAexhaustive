@@ -2,7 +2,7 @@ rm(list = ls()) #remove all objects
 library(flux)
 
 library(gRbase) ## For the "combnPrim" function, efficiently listing combinations
-
+library(parallel)
 # _______________________________________________________
 # SIM DATA AND SET PARAMS
 # _______________________________________________________
@@ -82,7 +82,7 @@ pairwise_distance <- function(points){
 #
 ###########################################################################################################################################
 
-Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6, n_sources = 1)
+Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6, n_sources = 1, n_cores = 1)
 			{
 			colnames(Trap_Data) <- c("Longitude", "Latitude", "Hits")
 			Trap_Data <- data.frame(Trap_Data)
@@ -112,7 +112,7 @@ Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time
 
       params <- list(n_sources = n_sources, x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
 				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
-				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only, Long_Max_Bound = Long_Max_Bound)
+				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only, Long_Max_Bound = Long_Max_Bound, n_cores = n_cores)
 			return(params)
 			}
 
@@ -181,59 +181,70 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				{
 				for(j in 1:length(Po_Params$Po_Array_Hits[1,,1]))
 					{
-					Hits_Prob <- mapply(dpois, Data_Params$Hits_Only$Hits, Po_Params$Po_Array_Hits[i,j,])
-					Miss_Prob <- mapply(dpois, Data_Params$Miss_Only$Hits, Po_Params$Po_Array_Miss[i,j,])
+					Hits_Prob <- mcmapply(dpois, Data_Params$Hits_Only$Hits, Po_Params$Po_Array_Hits[i,j,], mc.cores = Data_Params$n_cores)
+					Miss_Prob <- mcmapply(dpois, Data_Params$Miss_Only$Hits, Po_Params$Po_Array_Miss[i,j,], mc.cores = Data_Params$n_cores)
 					SS_Array_Hits[i,j,] <- Hits_Prob
 					SS_Array_Miss[i,j,] <- Miss_Prob
+					print(i)
 					}
 				}
 				SS_Hits <- exp(apply(log(SS_Array_Hits), c(1,2), sum))
 				SS_Miss <- exp(apply(log(SS_Array_Miss), c(1,2), sum))
 				SS_Both <- SS_Hits * SS_Miss
-				SS_Hits <- SS_Hits/sum(SS_Hits)
-				SS_Miss <- SS_Miss/sum(SS_Miss)
-				SS_Both <- SS_Both/sum(SS_Both)
-				SS_Prob <- list(SS_Array_Hits = SS_Array_Hits, SS_Array_Miss = SS_Array_Miss, SS_Hits = SS_Hits, SS_Miss = SS_Miss, SS_Both = SS_Both)
+				Source_Hits <- SS_Hits/sum(SS_Hits)
+				Source_Miss <- SS_Miss/sum(SS_Miss)
+				Source_Both <- SS_Both/sum(SS_Both)
+				Source_Prob <- list(Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both)
 
-				return(SS_Prob)
+				return(Source_Prob)
 
 			}	 else{
 					Sum_hit_po <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
   				Sum_miss_po <- matrix(NA, ncol = length(Data_Params$Miss_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
 
   				################################################################################################
-
+					print("Calculate Poisson Parameters by summing hazard surfaces")
+					Sys.sleep(5)
+					print("Poisson Parameters for the Hits")
+					Sys.sleep(3)
 					for(j in 1:length(Data_Params$Hits_Only[,1]))
 						{
 							matrix_h <- Po_Params$Po_Array_Hits[,,j]
-							Sum_hit_po[, j] <- apply(Data_Params$AP_allocation, FUN = function(x) sum(matrix_h[x]), MARGIN = 1)
+							Sum_hit_po[, j] <- parRapply(cluster, Data_Params$AP_allocation, FUN = function(x) sum(matrix_h[x]))
+							print(j)
 						}
+						print("Poisson Parameters for the Miss")
+						Sys.sleep(3)
 						for(j in 1:length(Data_Params$Miss_Only[,1]))
 						{
 							matrix_m <- Po_Params$Po_Array_Miss[,,j]
-							Sum_miss_po[, j] <- apply(Data_Params$AP_allocation, FUN = function(x) sum(matrix_m[x]), MARGIN = 1)
+							Sum_miss_po[, j] <- parRapply(cluster, Data_Params$AP_allocation, FUN = function(x) sum(matrix_m[x]))
+							print(j)
 						}
 
-					MATRIX_A <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
-  			  MATRIX_B <- matrix(NA, ncol = length(Data_Params$Miss_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
-					S_hit_prob <- c()
-					S_miss_prob <- c()
-
+					S_hit_prob <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
+					S_miss_prob <- matrix(NA, ncol = length(Data_Params$Miss_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
+					print("Calculate probabilities for observing data given our fixed sources")
+					Sys.sleep(5)
+					print("For the Hits")
+					Sys.sleep(3)
 					for(i in 1:length(Data_Params$Hits_Only[,1]))
 					{
-						MATRIX_A[,i] <- mapply(dpois, 1, Sum_hit_po[,i])
+						S_hit_prob[,i] <- mcmapply(dpois, Data_Params$Hits_Only$Hits[i], Sum_hit_po[,i], mc.cores = Data_Params$n_cores)
+						print(i)
 					}
-						MATRIX_A <- log(MATRIX_A)
-						S_hit_prob <- apply(MATRIX_A, FUN = sum, MARGIN = 1)
-						S_hit_prob <- exp(S_hit_prob)
-
+					S_hit_prob <- log(S_hit_prob)
+					S_hit_prob <- exp(apply(S_hit_prob, FUN = sum, MARGIN = 1))
+					print("For the misses")
+					Sys.sleep(3)
 					for(i in 1:length(Data_Params$Miss_Only[,1]))
 					{
-						MATRIX_B[,i] <- mapply(dpois, 0, Sum_miss_po[,i])
+						S_miss_prob[,i] <- mcmapply(dpois, Data_Params$Miss_Only$Hits[i], Sum_miss_po[,i], mc.cores = Data_Params$n_cores)
+						print(i)
 					}
-						MATRIX_B <- log(MATRIX_B)
-						S_miss_prob <- apply(MATRIX_B, FUN = sum, MARGIN = 1)
-						S_miss_prob <- exp(S_miss_prob)
+
+					S_miss_prob <- log(S_miss_prob)
+					S_miss_prob <- exp(apply(S_miss_prob, FUN = sum, MARGIN = 1))
 
 					S_both_prob <- S_hit_prob*S_miss_prob
   				S_probs <- cbind(Data_Params$AP_allocation, S_hit_prob, S_miss_prob, S_both_prob)
@@ -241,10 +252,12 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				final_hits <- c()
 				final_miss <- c()
 				final_both <- c()
-
+				print("Sum over probabilities to obtain likelihood for individual sources")
+				Sys.sleep(5)
 				for(i in 1:((Data_Params$x_grid_cells)*(Data_Params$y_grid_cells)))
 				{
-					a <- apply(S_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i), MARGIN=1)
+					print(i)
+					a <- parRapply(cluster, S_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i))
 					final_hits[i] <- sum(S_probs[a, Data_Params$n_sources + 1])
 					final_miss[i] <- sum(S_probs[a, Data_Params$n_sources + 2])
 					final_both[i] <- sum(S_probs[a, Data_Params$n_sources + 3])
@@ -256,11 +269,10 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				Source_Hits <-  Source_Hits/sum(Source_Hits)
 				Source_Miss <-  Source_Miss/sum(Source_Miss)
 				Source_Both <-  Source_Both/sum(Source_Both)
-				Source_Prob <- list( Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both, Sum_hit_po = Sum_hit_po)
+				Source_Prob <- list( Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both)
 				return(Source_Prob)
 				}
 			}
-
 
 ###########################################################################################################################################
 # function to resize this sub-matrix to the original resolution
@@ -353,11 +365,24 @@ plot_sources <- function(Data_Params, Probs)
 # RUN PRESENCE/ABSENCE WITH THESE PARAMS
 # _______________________________________________________
 trap_data <- as.data.frame(trap_data)
+start.time <- Sys.time()
+## Extract ALL Parameters from your data
+time.taken <- end.time - start.time
+time.taken
 
-all_params <- Extract_Params(trap_data,  x_grid_cells = 8, y_grid_cells = 8, n_sources = 3, Trap_Radius = 0.01, Guard_Rail = 0.1)
+all_params <- Extract_Params(My_trap_data, x_grid_cells = 20, y_grid_cells = 20, Guard_Rail = 0.5, Trap_Radius = 0.28, n_sources = 3, n_cores = 3)
+
+## Compute Poisson Parameters
 po_params <- Trap_Po_Parameters(all_params)
 
-source_probs <- Multisource_probs(all_params, po_params)
+## Compute probability matrices in parallel
+cluster <- makeCluster(3)
+clusterExport(cluster, c("Data_parameters", "Trap_Poisson_Params"))
+source_probs <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
+#stopCluster(cluster)
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
 
 ###########################################################################################################################################
 
