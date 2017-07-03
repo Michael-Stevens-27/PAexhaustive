@@ -24,10 +24,6 @@ AP_allocation <- function(grid_x, grid_y)
 
 #compare <- microbenchmark(AP_allocation(4,3), combn(20, 2), combinations(20, 2), times = 1000)
 autoplot(compare)
-
-
-
-
 ###################################################################
 
 source("http://bioconductor.org/biocLite.R")

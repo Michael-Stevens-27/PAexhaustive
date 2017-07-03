@@ -33,13 +33,11 @@ d <- geoData(trap_data$V1,trap_data$V2)
 s <- geoDataSource(dummy_source$V1,dummy_source$V2)
 
 # params
-params <- geoParams(data = d, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(d$longitude), priorMean_latitude = mean(d$latitude), guardRail = 0.05)
-params$output$longitude_cells <-300
-params$output$latitude_cells <- 300
+params <- geoParams(data = d, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(d$longitude), priorMean_latitude = mean(d$latitude), guardRail = 0.5)
+params$output$longitude_cells <-500
+params$output$latitude_cells <- 500
 
 params$output$longitude_minMax
-all_params$Long_Max_Bound
-
 m <- geoMCMC(data=d,params= params)
 
 ##_____________FUNCTIONS ______________##
@@ -181,11 +179,10 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				{
 				for(j in 1:length(Po_Params$Po_Array_Hits[1,,1]))
 					{
-					Hits_Prob <- mcmapply(dpois, Data_Params$Hits_Only$Hits, Po_Params$Po_Array_Hits[i,j,], mc.cores = Data_Params$n_cores)
-					Miss_Prob <- mcmapply(dpois, Data_Params$Miss_Only$Hits, Po_Params$Po_Array_Miss[i,j,], mc.cores = Data_Params$n_cores)
+					Hits_Prob <- mapply(dpois, Data_Params$Hits_Only$Hits, Po_Params$Po_Array_Hits[i,j,])
+					Miss_Prob <- mapply(dpois, Data_Params$Miss_Only$Hits, Po_Params$Po_Array_Miss[i,j,])
 					SS_Array_Hits[i,j,] <- Hits_Prob
 					SS_Array_Miss[i,j,] <- Miss_Prob
-					print(i)
 					}
 				}
 				SS_Hits <- exp(apply(log(SS_Array_Hits), c(1,2), sum))
@@ -204,7 +201,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 
   				################################################################################################
 					print("Calculate Poisson Parameters by summing hazard surfaces")
-					Sys.sleep(5)
+					Sys.sleep(3)
 					print("Poisson Parameters for the Hits")
 					Sys.sleep(3)
 					for(j in 1:length(Data_Params$Hits_Only[,1]))
@@ -225,7 +222,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 					S_hit_prob <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
 					S_miss_prob <- matrix(NA, ncol = length(Data_Params$Miss_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
 					print("Calculate probabilities for observing data given our fixed sources")
-					Sys.sleep(5)
+					Sys.sleep(3)
 					print("For the Hits")
 					Sys.sleep(3)
 					for(i in 1:length(Data_Params$Hits_Only[,1]))
@@ -253,7 +250,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				final_miss <- c()
 				final_both <- c()
 				print("Sum over probabilities to obtain likelihood for individual sources")
-				Sys.sleep(5)
+				Sys.sleep(3)
 				for(i in 1:((Data_Params$x_grid_cells)*(Data_Params$y_grid_cells)))
 				{
 					print(i)
@@ -367,38 +364,40 @@ plot_sources <- function(Data_Params, Probs)
 trap_data <- as.data.frame(trap_data)
 start.time <- Sys.time()
 ## Extract ALL Parameters from your data
-time.taken <- end.time - start.time
-time.taken
-
-all_params <- Extract_Params(My_trap_data, x_grid_cells = 20, y_grid_cells = 20, Guard_Rail = 0.5, Trap_Radius = 0.28, n_sources = 3, n_cores = 3)
+Data_parameters <- Extract_Params(trap_data, x_grid_cells = 20, y_grid_cells = 20, Guard_Rail = 0.5, Trap_Radius = 0.2, n_sources = 3, n_cores = 3)
 
 ## Compute Poisson Parameters
-po_params <- Trap_Po_Parameters(all_params)
+Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
 
 ## Compute probability matrices in parallel
 cluster <- makeCluster(3)
 clusterExport(cluster, c("Data_parameters", "Trap_Poisson_Params"))
-source_probs <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
+Source_Probabilities <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
 #stopCluster(cluster)
 end.time <- Sys.time()
 time.taken <- end.time - start.time
 time.taken
 
+#load("20x20data")
+
 ###########################################################################################################################################
 
-hits <- geoData(all_params$Hits_Only$Longitude, all_params$Hits_Only$Latitude)
+hits <- geoData(Data_parameters$Hits_Only$Longitude, Data_parameters$Hits_Only$Latitude)
 
-misses <- geoDataSource(all_params$Miss_Only$Longitude,all_params$Miss_Only$Latitude)
+misses <- geoDataSource(Data_parameters$Miss_Only$Longitude, Data_parameters$Miss_Only$Latitude)
 
 
 ######
 
 # the map alone
 
-a <- expandMatrix(source_probs$Source_Both, 300, 300)
+a <- expandMatrix(Source_Probabilities$Source_Both, 500, 500)
+b <- expandMatrix(Source_Probabilities$Source_Hits, 500, 500)
+c <- expandMatrix(Source_Probabilities$Source_Miss, 500, 500)
+
 
 x11()
-geoPlotMap(data = d, source = s, params = params, breakPercent = seq(0, 20, 2), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
+geoPlotMap(data = d, source = s, params = params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
            crimeCol = "black", crimeCex = 2, sourceCol = "red", sourceCex = 2, surface = m$geoProfile)
 
 ######
@@ -406,19 +405,19 @@ geoPlotMap(data = d, source = s, params = params, breakPercent = seq(0, 20, 2), 
 # both
 x11()
 
-geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(0, 5, 0.5), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
+geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
            crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-a))
 
 # hits
 x11()
-geoPlotMap(data = hits, params = params, breakPercent = seq(0, 100, 10), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
-           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-source_probs$Source_Hits))
+geoPlotMap(data = hits, params = params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
+           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-b))
 
 
 # misses
 x11()
-geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(0, 100, 10), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
-           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-source_probs$Source_Miss))
+geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
+           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(c))
 
 #x11()
 #perspGP(surface=t(probs$TwoD_miss),aggregate_size=5,surface_type="prob",phiGP=70,thetaGP=-10)

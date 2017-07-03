@@ -144,11 +144,10 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				{
 				for(j in 1:length(Po_Params$Po_Array_Hits[1,,1]))
 					{
-					Hits_Prob <- mcmapply(dpois, Data_Params$Hits_Only$Hits, Po_Params$Po_Array_Hits[i,j,], mc.cores = Data_Params$n_cores)
-					Miss_Prob <- mcmapply(dpois, Data_Params$Miss_Only$Hits, Po_Params$Po_Array_Miss[i,j,], mc.cores = Data_Params$n_cores)
+					Hits_Prob <- mapply(dpois, Data_Params$Hits_Only$Hits, Po_Params$Po_Array_Hits[i,j,])
+					Miss_Prob <- mapply(dpois, Data_Params$Miss_Only$Hits, Po_Params$Po_Array_Miss[i,j,])
 					SS_Array_Hits[i,j,] <- Hits_Prob
 					SS_Array_Miss[i,j,] <- Miss_Prob
-					print(i)
 					}
 				}
 				SS_Hits <- exp(apply(log(SS_Array_Hits), c(1,2), sum))
@@ -167,7 +166,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 
   				################################################################################################
 					print("Calculate Poisson Parameters by summing hazard surfaces")
-					Sys.sleep(5)
+					Sys.sleep(3)
 					print("Poisson Parameters for the Hits")
 					Sys.sleep(3)
 					for(j in 1:length(Data_Params$Hits_Only[,1]))
@@ -188,7 +187,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 					S_hit_prob <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
 					S_miss_prob <- matrix(NA, ncol = length(Data_Params$Miss_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
 					print("Calculate probabilities for observing data given our fixed sources")
-					Sys.sleep(5)
+					Sys.sleep(3)
 					print("For the Hits")
 					Sys.sleep(3)
 					for(i in 1:length(Data_Params$Hits_Only[,1]))
@@ -216,7 +215,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				final_miss <- c()
 				final_both <- c()
 				print("Sum over probabilities to obtain likelihood for individual sources")
-				Sys.sleep(5)
+				Sys.sleep(3)
 				for(i in 1:((Data_Params$x_grid_cells)*(Data_Params$y_grid_cells)))
 				{
 					print(i)
@@ -321,8 +320,6 @@ My_trap_data <- read.table("FootballToyExample.txt", header = FALSE)
 ##_____________CLUSTERING ______________##
 start.time <- Sys.time()
 ## Extract ALL Parameters from your data
-time.taken <- end.time - start.time
-time.taken
 Data_parameters <- Extract_Params(My_trap_data, x_grid_cells = 20, y_grid_cells = 20, Guard_Rail = 0.5, Trap_Radius = 0.28, n_sources = 3, n_cores = 3)
 
 ## Compute Poisson Parameters
@@ -341,6 +338,7 @@ time.taken
 ## Contour plot of the matrices
 x11()
 plot_sources(Data_parameters, Source_Probabilities)
-
 ###################
 ###################
+#save(Data_parameters, Trap_Poisson_Params, Source_Probabilities, file= "20x20-3source_presence_absence.Rdata")
+#load("DATA NAME")
