@@ -1,11 +1,36 @@
-#_____________PRESENCE ABSENCE 1.0.0______________##
-
-rm(list = ls())
-
-##_____________ PACKAGES ______________##
+rm(list = ls()) #remove all objects
+library(flux)
 library(gRbase) ## For the "combnPrim" function, efficiently listing combinations
+                ## Initial install, run commands:
+								## source("http://bioconductor.org/biocLite.R")
+								## biocLite("gRbase")
 library(parallel)
+library(RgeoProfile)
 ##_____________FUNCTIONS ______________##
+
+latlon_to_bearing <- function(origin_lat, origin_lon, dest_lat, dest_lon) {
+
+	# convert input arguments to radians
+	origin_lat <- origin_lat*2*pi/360
+	dest_lat <- dest_lat*2*pi/360
+	origin_lon <- origin_lon*2*pi/360
+	dest_lon <- dest_lon*2*pi/360
+
+	delta_lon <- dest_lon-origin_lon
+
+	# calculate bearing and great circle distance
+	bearing <- atan2(sin(delta_lon)*cos(dest_lat), cos(origin_lat)*sin(dest_lat)-sin(origin_lat)*cos(dest_lat)*cos(delta_lon))
+	gc_angle <- acos(sin(origin_lat)*sin(dest_lat) + cos(origin_lat)*cos(dest_lat)*cos(delta_lon))
+
+	# convert bearing from radians to degrees measured clockwise from due north, and convert gc_angle to great circle distance via radius of earth (km)
+	bearing <- bearing*360/(2*pi)
+	bearing <- (bearing+360)%%360
+	earthRad <- 6371
+	gc_dist <- earthRad*gc_angle
+
+	return(list(bearing=bearing, gc_dist=gc_dist))
+}
+
 ###########################################################################################################################################
 #
 # The "pairwise_distance" function returns half the average of the minimum distances between traps. This value takes the place of the
@@ -44,7 +69,6 @@ pairwise_distance <- function(points){
 # "n_sources" sources from the total number of grid cells.
 #
 ###########################################################################################################################################
-
 Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6, n_sources = 1, n_cores = 1)
 			{
 			colnames(Trap_Data) <- c("Longitude", "Latitude", "Hits")
@@ -70,12 +94,13 @@ Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time
       Hits_Only <- subset(Trap_Data, Hits != 0)
 			Miss_Only <- subset(Trap_Data, Hits == 0)
 			pairwise <- pairwise_distance(Trap_Data)
-			Sd_x <- 0.2*mean(pairwise$distance, na.rm = TRUE)
-			Sd_y <- 0.2*mean(pairwise$distance, na.rm = TRUE)
+			Sd_x <- 0.15*mean(pairwise$distance, na.rm = TRUE)
+			Sd_y <- 0.15*mean(pairwise$distance, na.rm = TRUE)
 
       params <- list(n_sources = n_sources, x_grid_cells = x_grid_cells, y_grid_cells = y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
 				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
-				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only, Long_Max_Bound = Long_Max_Bound, n_cores = n_cores)
+				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only, Long_Max_Bound = Long_Max_Bound, n_cores = n_cores,
+					  MnMx_Long= MnMx_Long, MnMx_Lat= MnMx_Lat)
 			return(params)
 			}
 
@@ -192,7 +217,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 					Sys.sleep(3)
 					for(i in 1:length(Data_Params$Hits_Only[,1]))
 					{
-						S_hit_prob[,i] <-mcmapply(dpois, Data_Params$Hits_Only$Hits[i], Sum_hit_po[,i], mc.cores = Data_Params$n_cores)
+						S_hit_prob[,i] <- mcmapply(dpois, Data_Params$Hits_Only$Hits[i], Sum_hit_po[,i], mc.cores = Data_Params$n_cores)
 						print(i)
 					}
 					S_hit_prob <- log(S_hit_prob)
@@ -231,7 +256,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				Source_Hits <-  Source_Hits/sum(Source_Hits)
 				Source_Miss <-  Source_Miss/sum(Source_Miss)
 				Source_Both <-  Source_Both/sum(Source_Both)
-				Source_Prob <- list( Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both, Sum_hit_po=Sum_hit_po, Sum_miss_po=Sum_miss_po)
+				Source_Prob <- list( Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both)
 				return(Source_Prob)
 				}
 			}
@@ -267,6 +292,7 @@ expandMatrix <- function(mat,output_long,output_lat)
   return(t(mat2))
   }
 
+
 ###########################################################################################################################################
 #
 # The "plot1source" function plots a contour map of the single source probabilities
@@ -275,6 +301,23 @@ expandMatrix <- function(mat,output_long,output_lat)
 
 plot_sources <- function(Data_Params, Probs)
 		   {
+				 if(Data_Params$n_sources == 1)
+				 {
+				 #x11()
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Hits, col = "darkgreen", nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Miss,col = "red",add=TRUE, nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Both,col = "blue", add=TRUE, nlevels = 5)
+				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
+				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
+
+				 #x11()
+				 #par(mfrow=c(1,3))
+				 #persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat,  SS_Prob$SS_Hits, col = "green")
+				 #persp(Data_Params$Anchor_Points_Long,Data_Params$Anchor_Points_Lat,  SS_Prob$SS_Miss, col = "red")
+				 #persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat,  SS_Prob$SS_Both, col = "blue")
+
+				 #par(mfrow=c(2,2))
+			 } else {
 				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Hits, col = "darkgreen", nlevels = 5)
 				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Miss,col = "red",add=TRUE, nlevels = 3)
 				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Both,col = "blue",add=TRUE, nlevels = 5)
@@ -298,48 +341,157 @@ plot_sources <- function(Data_Params, Probs)
 				#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Hits,  col = "green")
 				#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Miss,  col = "red")
 				#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Both,  col = "blue")
-
+			}
 			}
 
 ###########################################################################################################################################
 ###########################################################################################################################################
 ###########################################################################################################################################
 
-##_____________USER INPUT ______________##
+Michael_geoReportHitscores <- function(params, source_data, surface)
+	  {
+		sources <- cbind(source_data$source_longitude, source_data$source_latitude)
+		ordermat <- matrix(0, params$y_grid_cells, ncol = params$x_grid_cells)
+		profile_order <- order(surface)
+		for (i in 1:(params$y_grid_cells * params$x_grid_cells)) {
+			ordermat[profile_order[i]] = i
+				}
+				hitscoremat <<- 1-ordermat/(params$y_grid_cells * params$x_grid_cells)
+				hitscoremat2 <- hitscoremat[nrow(hitscoremat):1,]
+				xvec=seq(params$MnMx_Long[1], params$MnMx_Long[2], length=params$x_grid_cells)
+				yvec=seq(params$MnMx_Lat[1], params$MnMx_Lat[2], length=params$y_grid_cells)
 
-## The only input required is the Longitude/Latitude points of said traps and
-## the number of hits associated with each (non negative integer)
-## + choice of parameters
+				xdiff = abs(outer(rep(1,nrow(sources)),xvec)-outer(sources[,1],rep(1,params$x_grid_cells)))
+				ydiff = abs(outer(rep(1,nrow(sources)),yvec)-outer(sources[,2],rep(1,params$y_grid_cells)))
 
-setwd("/home/mstevens/Desktop/Presence Absence/Presence_Absence-master/Finals/data")
+				msourcex = mapply(which.min,x=split(xdiff,row(xdiff)))
+				msourcey = params$x_grid_cells-(mapply(which.min,x=split(ydiff,row(ydiff))))+1
 
-###########################################################################################################################################
-My_trap_data <- read.table("FootballToyExample.txt", header = FALSE)
-###########################################################################################################################################
+				if (nrow(sources)>1) {
+					hitscores = diag(hitscoremat2[msourcey,msourcex])
+					} else {
+						hitscores = hitscoremat2[msourcey,msourcex]}
+						hit_output <<- cbind(sources,hitscores)
+						colnames(hit_output) <- c("lon","lat","hs")
+						return(hit_output)
+					}
 
-##_____________CLUSTERING ______________##
-start.time <- Sys.time()
+# _______________________________________________________
+# SIM DATA AND SET PARAMS
+# _______________________________________________________
+# generate simulated data
+
+# sim data for single source using rDPM
+sim <- rDPM(15, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0, sigma = 1, tau = 3)
+coords <- cbind(sim$longitude, sim$latitude)
+
+# calculate distance from source for all crimes
+dvec <- rep(NA,length(sim$longitude))
+for (i in 1:length(sim$longitude))
+	{
+        dvec[i] <- latlon_to_bearing(sim$latitude[i], sim$longitude[i], sim$source_lat,sim$source_lon)$gc_dist
+    }
+
+# create linear function of hit probabilities from 1 at source to zero for furthest distance
+hit_prob <- 1-dvec/max(dvec)
+
+# use this to designate all points as hits or misses
+hit_or_miss <- sapply(hit_prob,function(x) sample(0:1,1,prob=c(1-x,x)))
+
+# create list of colours corresponding to hits and misses
+my_cols <- rep(NA,length(hit_or_miss))
+my_cols[which(hit_or_miss==0)] <- "red"
+	my_cols[which(hit_or_miss==1)] <- "green"
+
+# plot
+plot(sim$longitude,sim$latitude,col=my_cols,pch=16)
+points(sim$source_lon,sim$source_lat,pch=15,col="blue")
+
+dhitmiss <- cbind(sim$longitude,sim$latitude, hit_or_miss)
+dpm_hits <- subset(dhitmiss, dhitmiss[,3]==1)
+dpm_misses <- subset(dhitmiss, dhitmiss[,3]==0)
+
+# _______________________________________________________
+# RUN AS DPM TO EXTRACT PARAMS
+# _______________________________________________________
+# convert
+
+
+all_data <- geoData(sim$longitude, sim$latitude)
+s <- geoDataSource(sim$source_lon, sim$source_lat)
+master_params <- geoParams(data = all_data, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(all_data$longitude), priorMean_latitude = mean(all_data$latitude), guardRail = 0.05)
+hit_data <- geoData(dpm_hits[,1], dpm_hits[,2])
+hit_params <- geoParams(data = hit_data, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = 0.05)
+hit_params$output$longitude_minMax <- master_params$output$longitude_minMax
+hit_params$output$latitude_minMax <- master_params$output$latitude_minMax
+
+m <- geoMCMC(data=hit_data, params= hit_params)
+#hitscore function
+
+# _______________________________________________________
+# RUN PRESENCE/ABSENCE WITH THESE PARAMS
+# _______________________________________________________
+dhitmiss <- as.data.frame(dhitmiss)
+#start.time <- Sys.time()
 ## Extract ALL Parameters from your data
-Data_parameters <- Extract_Params(My_trap_data, x_grid_cells = 2, y_grid_cells = 2, Guard_Rail = 0.5, Trap_Radius = 0.3, n_sources = 2, n_cores = 3)
 
+Data_parameters <- Extract_Params(dhitmiss, x_grid_cells = 500, y_grid_cells = 500, Guard_Rail = 0.05, Trap_Radius = 0.015, n_sources = 1, n_cores = 3)
 ## Compute Poisson Parameters
 Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
 
 ## Compute probability matrices in parallel
-cluster <- makeCluster(Data_parameters$n_cores)
-clusterExport(cluster, c("Data_parameters", "Trap_Poisson_Params"))
+#cluster <- makeCluster(3)
+#clusterExport(cluster, c("Data_parameters", "Trap_Poisson_Params"))
 Source_Probabilities <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
-
 #stopCluster(cluster)
-end.time <- Sys.time()
-time.taken <- end.time - start.time
-time.taken
-stopCluster(cluster)
+#end.time <- Sys.time()
+#time.taken <- end.time - start.time
+#time.taken
 
-## Contour plot of the matrices
-x11()
-plot_sources(Data_parameters, Source_Probabilities)
-###################
-###################
-#save(Data_parameters, Trap_Poisson_Params, Source_Probabilities, file= "20x20-3source_presence_absence.Rdata")
 #load("20x20data")
+
+###########################################################################################################################################
+
+hits <- geoData(Data_parameters$Hits_Only$Longitude, Data_parameters$Hits_Only$Latitude)
+
+misses <- geoDataSource(Data_parameters$Miss_Only$Longitude, Data_parameters$Miss_Only$Latitude)
+# order(m$posteriorSurface)
+# order(a)
+geoReportHitscores(hit_params, s, m$posteriorSurface)
+a <- matrix(rank(-Source_Probabilities$Source_Both), ncol = 500, nrow = 500)
+Michael_geoReportHitscores(Data_parameters, s , a)
+######
+
+# the map alone
+
+x11(display = "Original")
+geoPlotMap(data = hit_data, source = s, params = hit_params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("darkred", "red", "orange", "yellow"),
+           crimeCol = "darkgreen", crimeCex = 2, sourceCol = "blue", sourceCex = 2, surface = m$geoProfile)
+######
+#x11()
+#contour(Data_parameters$Anchor_Points_Long, Data_parameters$Anchor_Points_Lat, matrix(rank(-Source_Probabilities$Source_Hits),ncol = 500), col = "darkgreen", nlevels =5)
+#contour(Data_parameters$Anchor_Points_Long, Data_parameters$Anchor_Points_Lat,  matrix(rank(Source_Probabilities$Source_Miss), ncol = 500),col = "red",add=TRUE, nlevels = 3)
+#contour(Data_parameters$Anchor_Points_Long, Data_parameters$Anchor_Points_Lat,  matrix(rank(-Source_Probabilities$Source_Both),ncol = 500), col = "blue",add=TRUE, nlevels = 5)
+#points(Data_parameters$Hits_Only$Longitude, Data_parameters$Hits_Only$Latitude , pch = 16, col = "green")
+#points(Data_parameters$Miss_Only$Longitude, Data_parameters$Miss_Only$Latitude , pch = 16, col = "red")
+# both
+x11()
+geoPlotMap(data = hits, source = s, params = master_params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("darkred", "red", "orange", "yellow"),
+           crimeCol = "darkgreen", crimeCex = 2, sourceCol = "red", sourceCex = 2, surface = rank(-Source_Probabilities$Source_Both))
+
+# hits
+#x11()
+#geoPlotMap(data = hits, params = params, breakPercent = seq(0, 100, 10), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
+#           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(Source_Probabilities$Source_Hits))
+
+# misses
+#x11("Misses")
+#geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(50, 100, 10), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
+#           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-Source_Probabilities$Source_Miss))
+
+#x11()
+#perspGP(surface=t(probs$TwoD_miss),aggregate_size=5,surface_type="prob",phiGP=70,thetaGP=-10)
+
+#x11()
+#perspGP(surface=t(probs$TwoD_Both),aggregate_size=3,surface_type="prob")
+#############################################################################################################################################

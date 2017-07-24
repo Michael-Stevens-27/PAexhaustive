@@ -34,8 +34,6 @@ s <- geoDataSource(dummy_source$V1,dummy_source$V2)
 
 # params
 params <- geoParams(data = d, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(d$longitude), priorMean_latitude = mean(d$latitude), guardRail = 0.5)
-params$output$longitude_cells <-500
-params$output$latitude_cells <- 500
 
 params$output$longitude_minMax
 m <- geoMCMC(data=d,params= params)
@@ -364,7 +362,7 @@ plot_sources <- function(Data_Params, Probs)
 trap_data <- as.data.frame(trap_data)
 start.time <- Sys.time()
 ## Extract ALL Parameters from your data
-Data_parameters <- Extract_Params(trap_data, x_grid_cells = 20, y_grid_cells = 20, Guard_Rail = 0.5, Trap_Radius = 0.2, n_sources = 3, n_cores = 3)
+Data_parameters <- Extract_Params(trap_data, x_grid_cells = 30, y_grid_cells = 30, Guard_Rail = 0.5, Trap_Radius = 0.2, n_sources = 3, n_cores = 3)
 
 ## Compute Poisson Parameters
 Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
@@ -378,7 +376,7 @@ end.time <- Sys.time()
 time.taken <- end.time - start.time
 time.taken
 
-#load("20x20data")
+load("20x20data")
 
 ###########################################################################################################################################
 
@@ -416,8 +414,8 @@ geoPlotMap(data = hits, params = params, breakPercent = seq(0, 10, 1), mapType =
 
 # misses
 x11()
-geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
-           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(c))
+geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(50, 100, 10), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
+           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-c))
 
 #x11()
 #perspGP(surface=t(probs$TwoD_miss),aggregate_size=5,surface_type="prob",phiGP=70,thetaGP=-10)
@@ -425,3 +423,5 @@ geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(0, 
 #x11()
 #perspGP(surface=t(probs$TwoD_Both),aggregate_size=3,surface_type="prob")
 #############################################################################################################################################
+
+#geoPlotZoom(d, params, m$geoProfile)
