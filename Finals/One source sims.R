@@ -435,10 +435,9 @@ dhitmiss <- as.data.frame(dhitmiss)
 #start.time <- Sys.time()
 ## Extract ALL Parameters from your data
 
-Data_parameters <- Extract_Params(dhitmiss, x_grid_cells = 500, y_grid_cells = 500, Guard_Rail = 0.05, Trap_Radius = 0.015, n_sources = 1, n_cores = 3)
+Data_parameters <- Extract_Params(dhitmiss, x_grid_cells = 3, y_grid_cells = 3, Guard_Rail = 0.05, Trap_Radius = 0.015, n_sources = 1, n_cores = 1)
 ## Compute Poisson Parameters
 Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
-
 ## Compute probability matrices in parallel
 #cluster <- makeCluster(3)
 #clusterExport(cluster, c("Data_parameters", "Trap_Poisson_Params"))
