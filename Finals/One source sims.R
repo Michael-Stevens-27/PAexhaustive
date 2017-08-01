@@ -8,29 +8,8 @@ library(parallel)
 library(RgeoProfile)
 ##_____________FUNCTIONS ______________##
 
-latlon_to_bearing <- function(origin_longlat, dest_longlat) {
-
-	# convert input arguments to radians
-	origin_longlat[2] <- origin_longlat[2]*2*pi/360
-	dest_longlat[2] <- dest_longlat[2]*2*pi/360
-	origin_longlat[1] <- origin_longlat[1]*2*pi/360
-	dest_longlat[1] <- dest_longlat[1]*2*pi/360
-
-	delta_lon <- abs(dest_longlat[1] - origin_longlat[1])
-
-	# calculate bearing and great circle distance
-	bearing <- atan2(sin(delta_lon)*cos(dest_longlat[2]), cos(origin_longlat[2])*sin(dest_longlat[2]) - sin(origin_longlat[2])*cos(dest_longlat[2])*cos(delta_lon))
-	gc_angle <- acos(sin(origin_longlat[2])*sin(dest_longlat[2]) + cos(	origin_longlat[2])*cos(dest_longlat[2])*cos(delta_lon))
-
-	# convert bearing from radians to degrees measured clockwise from due north, and convert gc_angle to great circle distance via radius of earth (km)
-	bearing <- bearing*360/(2*pi)
-	bearing <- (bearing+360)%%360
-	earthRad <- 6371
-	gc_dist <- earthRad*gc_angle
-
-	return(list(bearing=bearing, gc_dist=gc_dist))
-}
 ################################################################################
+
 latlon_to_bearing <- function(origin_lat, origin_lon, dest_lat, dest_lon) {
 
 	# convert input arguments to radians
@@ -92,6 +71,7 @@ pairwise_distance <- function(points){
 # "n_sources" sources from the total number of grid cells.
 #
 ###########################################################################################################################################
+
 Extract_Params <- function(Trap_Data, x_grid_cells = 10, y_grid_cells = 10, Time = 1, Guard_Rail = 0.05, Trap_Radius = 0.6, n_sources = 1, n_cores = 1)
 			{
 			colnames(Trap_Data) <- c("Longitude", "Latitude", "Hits")
@@ -150,9 +130,12 @@ Poisson_Parameter <- function(x, y, mu_x, mu_y, trap_radius, t, Sd_x, Sd_y)
 #######################################################################################################################################
 
 Trap_Po_Parameters <- function(Params)
-			    {
-					Po_Array_Hits <- array(NA, c(length(Params$Anchor_Points_Long), length(Params$Anchor_Points_Lat), length(Params$Hits_Only$Longitude) ) )
-					Po_Array_Miss <- array(NA, c(length(Params$Anchor_Points_Long), length(Params$Anchor_Points_Lat), length(Params$Miss_Only$Longitude) ) )
+		{
+		if(length(Params$Miss_Only$Longitude)>0)
+		{
+
+		Po_Array_Hits <- array(NA, c(length(Params$Anchor_Points_Long), length(Params$Anchor_Points_Lat), length(Params$Hits_Only$Longitude) ) )
+		Po_Array_Miss <- array(NA, c(length(Params$Anchor_Points_Long), length(Params$Anchor_Points_Lat), length(Params$Miss_Only$Longitude) ) )
 
 		for(i in 1:length(Params$Anchor_Points_Long))
 			{
@@ -170,7 +153,23 @@ Trap_Po_Parameters <- function(Params)
 			}
 			Po_Param <- list(Po_Array_Hits = Po_Array_Hits, Po_Array_Miss = Po_Array_Miss)
 			return(Po_Param)
-}
+		}
+		else{
+		Po_Array_Hits <- array(NA, c(length(Params$Anchor_Points_Long), length(Params$Anchor_Points_Lat), length(Params$Hits_Only$Longitude) ) )
+		for(i in 1:length(Params$Anchor_Points_Long))
+			{
+			for(j in 1:length(Params$Anchor_Points_Lat))
+				{
+				Po_hits <- mapply(Poisson_Parameter, Params$Hits_Only$Longitude, Params$Hits_Only$Latitude, mu_x = Params$Anchor_Points_Long[i],
+					      mu_y = Params$Anchor_Points_Lat[j], trap_radius = Params$Trap_Radius, t = Params$Time,
+						Sd_x = Params$Sd_x, Sd_y = Params$Sd_y)
+				Po_Array_Hits[i, j,] <-  Po_hits
+				}
+			}
+			Po_Param <- list(Po_Array_Hits = Po_Array_Hits)
+			return(Po_Param)
+		}
+		}
 
 ###########################################################################################################################################
 #
@@ -180,6 +179,8 @@ Trap_Po_Parameters <- function(Params)
 
 Multisource_probs <- function(Data_Params, Po_Params)
 		{
+    if(length(Data_Params$Miss_Only$Longitude) > 0)
+    {
     ####################################################
     # SINGLE -  SOURCE
 		####################################################
@@ -282,6 +283,72 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				Source_Prob <- list( Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both)
 				return(Source_Prob)
 				}
+      }
+      else{
+        if(Data_Params$n_sources == 1)
+    		{
+    		SS_Array_Hits <- array(NA, c(length(Po_Params$Po_Array_Hits[,1,1]), length(Po_Params$Po_Array_Hits[1,,1]), length(Po_Params$Po_Array_Hits[1,1,]) ) )
+
+    			for(i in 1:length(Po_Params$Po_Array_Hits[,1,1]))
+    				{
+    				for(j in 1:length(Po_Params$Po_Array_Hits[1,,1]))
+    					{
+    					Hits_Prob <- mapply(dpois, Data_Params$Hits_Only$Hits, Po_Params$Po_Array_Hits[i,j,])
+    					SS_Array_Hits[i,j,] <- Hits_Prob
+    					}
+    				}
+    				SS_Hits <- exp(apply(log(SS_Array_Hits), c(1,2), sum))
+    				Source_Hits <- SS_Hits/sum(SS_Hits)
+    			  Source_Prob <- list(Source_Hits = Source_Hits)
+
+    				return(Source_Prob)
+
+    			}	 else{
+    					Sum_hit_po <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
+
+      				################################################################################################
+    					print("Calculate Poisson Parameters by summing hazard surfaces")
+    					Sys.sleep(3)
+    					print("Poisson Parameters for the Hits")
+    					Sys.sleep(3)
+    					for(j in 1:length(Data_Params$Hits_Only[,1]))
+    						{
+    							matrix_h <- Po_Params$Po_Array_Hits[,,j]
+    							Sum_hit_po[, j] <- parRapply(cluster, Data_Params$AP_allocation, FUN = function(x) sum(matrix_h[x]))
+    							print(j)
+    						}
+
+    					S_hit_prob <- matrix(NA, ncol = length(Data_Params$Hits_Only$Longitude), nrow =length(Data_Params$AP_allocation[,1]))
+
+    					print("Calculate probabilities for observing data given our fixed sources")
+    					Sys.sleep(3)
+    					print("For the Hits")
+    					Sys.sleep(3)
+    					for(i in 1:length(Data_Params$Hits_Only[,1]))
+    					{
+    						S_hit_prob[,i] <- mcmapply(dpois, Data_Params$Hits_Only$Hits[i], Sum_hit_po[,i], mc.cores = Data_Params$n_cores)
+    						print(i)
+    					}
+    					S_hit_prob <- log(S_hit_prob)
+    					S_hit_prob <- exp(apply(S_hit_prob, FUN = sum, MARGIN = 1))
+
+              S_probs <- cbind(Data_Params$AP_allocation, S_hit_prob)
+    				################################################################################################
+    				final_hits <- c()
+    				print("Sum over probabilities to obtain likelihood for individual sources")
+    				Sys.sleep(3)
+    				for(i in 1:((Data_Params$x_grid_cells)*(Data_Params$y_grid_cells)))
+    				{
+    					print(i)
+    					a <- parRapply(cluster, S_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i))
+    					final_hits[i] <- sum(S_probs[a, Data_Params$n_sources + 1])
+    				}
+    				Source_Hits <- matrix(final_hits, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
+    				Source_Hits <-  Source_Hits/sum(Source_Hits)
+    				Source_Prob <- list( Source_Hits = Source_Hits)
+    				return(Source_Prob)
+    				}
+      }
 			}
 
 ###########################################################################################################################################
@@ -314,6 +381,7 @@ expandMatrix <- function(mat,output_long,output_lat)
   mat2 <- apply(mat1,1, function(x) expandVector(x, output_lat))
   return(t(mat2))
   }
+
 ##########################################################################################################################################
 ##########################################################################################################################################
 
@@ -410,50 +478,6 @@ plot_sources <- function(Data_Params, Probs)
 			}
 
 ###########################################################################################################################################
-###########################################################################################################################################
-###########################################################################################################################################
-# _______________________________________________________
-# SIM DATA AND SET PARAMS
-# _______________________________________________________
-# generate simulated data
-
-# sim data for single source using rDPM
-
-################################################################################
-################### FIRST SIM METHOD ###########################################
-################################################################################
-
-# calculate distance from source for all crimes
-#dvec <- rep(NA,length(sim$longitude))
-#for (i in 1:length(sim$longitude))
-#	{
-#        dvec[i] <- latlon_to_bearing(sim$latitude[i], sim$longitude[i], sim$source_lat,sim$source_lon)$gc_dist
-#  }
-
-# create linear function of hit probabilities from 1 at source to zero for furthest distance
-#hit_prob <- 1-dvec/max(dvec)
-
-# use this to designate all points as hits or misses
-#hit_or_miss <- sapply(hit_prob,function(x) sample(0:1,1,prob=c(1-x,x)))
-
-# create list of colours corresponding to hits and misses
-#my_cols <- rep(NA,length(hit_or_miss))
-#my_cols[which(hit_or_miss==0)] <- "red"
-#	my_cols[which(hit_or_miss==1)] <- "green"
-
-# plot
-#plot(sim$longitude,sim$latitude,col=my_cols,pch=16)
-#points(sim$source_lon,sim$source_lat,pch=15,col="blue")
-#hitmiss <- cbind(sim$longitude,sim$latitude, hit_or_miss)
-#dpm_hits <- subset(dhitmiss, dhitmiss[,3]==1)
-#dpm_misses <- subset(dhitmiss, dhitmiss[,3]==0)
-
-################################################################################
-################################################################################
-
-################################################################################
-####################### SECOND SIM METHOD ######################################
-################################################################################
 
 trap_assignment_data <- function(simulation, sim_params, detection_TR, n_traps_x, n_traps_y)
 	{
@@ -462,8 +486,8 @@ trap_assignment_data <- function(simulation, sim_params, detection_TR, n_traps_x
 	lats <- seq(sim_params$output$latitude_minMax[1], sim_params$output$latitude_minMax[2], (sim_params$output$latitude_minMax[2] - sim_params$output$latitude_minMax[1])/(n_traps_y-1))
   trap_loc <- expand.grid(longs, lats)
 
-	plot(trap_loc)
-	points(simulation$longitude, simulation$latitude, pch = 7, col= "green")
+	#plot(trap_loc)
+  #points(simulation$longitude, simulation$latitude, pch = 7, col= "green")
 
 	##### distance metric
 	lat_long <- cbind(simulation$longitude, simulation$latitude)
@@ -497,40 +521,51 @@ trap_assignment_data <- function(simulation, sim_params, detection_TR, n_traps_x
 	return(Trap_data)
 	}
 
-	#change alpha for multiple sources
+###########################################################################################################################################
+###########################################################################################################################################
+###########################################################################################################################################
+# _______________________________________________________
+# SIM DATA AND SET PARAMS
+# _______________________________________________________
+# generate simulated data
+# sim data for single source using rDPM
 
-sim <- rDPM(40, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0, sigma = 1, tau = 3)
-all_data <- geoData(sim$longitude, sim$latitude)
-dpm_parameters <- geoParams(data = all_data, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(all_data$longitude), priorMean_latitude = mean(all_data$latitude), guardRail = 0.05)
-Trap_Data <- trap_assignment_data(sim, dpm_parameters, 0.8, 4, 4)
-sum(Trap_Data[,3])
+################################################################################
+############################## SIMULATION ######################################
+################################################################################
+
+#change alpha for multiple sources
+DPM_hitscores <- c()
+PA_Hitscores <- c()
+Difference <- c()
+
+start.time <- Sys.time()
+for(p in 1:10)
+{
+sim <- rDPM(20, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0, sigma = 1, tau = 3)
+point_data <- geoData(sim$longitude, sim$latitude)
+
+master_params <- geoParams(data = point_data, sigma_mean = 1, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 5000, priorMean_longitude = mean(point_data$longitude), priorMean_latitude = mean(point_data$latitude), guardRail = 0.05)
+
+Trap_Data <- trap_assignment_data(sim, master_params, 0.8, 4, 4)
 dpm_hits <- subset(Trap_Data, Trap_Data[,3]>0)
 dpm_misses <- subset(Trap_Data, Trap_Data[,3]==0)
 
-################################################################################
-################################################################################
-# _______________________________________________________
-# RUN AS DPM TO EXTRACT PARAMS
-# _______________________________________________________
-# convert
-all_data <- geoData(Trap_Data[,1], Trap_Data[,2])
+trap_loc_data <- geoData(Trap_Data[,1], Trap_Data[,2])
 s <- geoDataSource(sim$source_lon, sim$source_lat)
-master_params <- geoParams(data = all_data, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(all_data$longitude), priorMean_latitude = mean(all_data$latitude), guardRail = 0.05)
 hit_data <- geoData(dpm_hits[,1], dpm_hits[,2])
-hit_params <- geoParams(data = hit_data, sigma_mean = 1, sigma_squared_shape = 2, samples= 100000, chains = 200, burnin = 10000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = 0.05)
+hit_params <- geoParams(data = hit_data, sigma_mean = 1, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 5000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = 0.05)
 hit_params$output$longitude_minMax <- master_params$output$longitude_minMax
 hit_params$output$latitude_minMax <- master_params$output$latitude_minMax
 
 m <- geoMCMC(data=hit_data, params= hit_params)
 #hitscore function
-
 # _______________________________________________________
 # RUN PRESENCE/ABSENCE WITH THESE PARAMS
 # _______________________________________________________
 Trap_Data <- as.data.frame(Trap_Data)
 #start.time <- Sys.time()
 ## Extract ALL Parameters from your data
-
 Data_parameters <- Extract_Params(Trap_Data, x_grid_cells = 500, y_grid_cells = 500, Guard_Rail = 0.05, Trap_Radius = 0.01, n_sources = 1, n_cores = 1)
 ## Compute Poisson Parameters
 Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
@@ -542,41 +577,21 @@ Source_Probabilities <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
 #end.time <- Sys.time()
 #time.taken <- end.time - start.time
 #time.taken
-
-#load("20x20data")
-
 ###########################################################################################################################################
+# PLOTTING
 
-hits <- geoData(Data_parameters$Hits_Only$Longitude, Data_parameters$Hits_Only$Latitude)
+#hits <- geoData(Data_parameters$Hits_Only$Longitude, Data_parameters$Hits_Only$Latitude)
 
-misses <- geoDataSource(Data_parameters$Miss_Only$Longitude, Data_parameters$Miss_Only$Latitude)
-# order(m$posteriorSurface)
-# order(a)
+#misses <- geoDataSource(Data_parameters$Miss_Only$Longitude, Data_parameters$Miss_Only$Latitude)
 
 # the map alone
 x11(display = "Original")
 geoPlotMap(data = hit_data, source = s, params = hit_params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("darkred", "red", "orange", "yellow"),
           crimeCol = "darkgreen", crimeCex = 2, sourceCol = "blue", sourceCex = 2, surface = m$geoProfile)
 
-#x11()
-#contour(Data_parameters$Anchor_Points_Long, Data_parameters$Anchor_Points_Lat, matrix(rank(-Source_Probabilities$Source_Hits),ncol = 500), col = "darkgreen", nlevels =5)
-#contour(Data_parameters$Anchor_Points_Long, Data_parameters$Anchor_Points_Lat,  matrix(rank(Source_Probabilities$Source_Miss), ncol = 500),col = "red",add=TRUE, nlevels = 3)
-#contour(Data_parameters$Anchor_Points_Long, Data_parameters$Anchor_Points_Lat,  matrix(rank(-Source_Probabilities$Source_Both),ncol = 500), col = "blue",add=TRUE, nlevels = 5)
-#points(Data_parameters$Hits_Only$Longitude, Data_parameters$Hits_Only$Latitude , pch = 16, col = "green")
-#points(Data_parameters$Miss_Only$Longitude, Data_parameters$Miss_Only$Latitude , pch = 16, col = "red")
-# both
 x11()
-geoPlotMap(data = hits, source = s, params = master_params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("darkred", "red", "orange", "yellow"),
+geoPlotMap(data = hit_data, source = s, params = master_params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("darkred", "red", "orange", "yellow"),
 						crimeCol = "darkgreen", crimeCex = 2, sourceCol = "red", sourceCex = 2, surface = rank(-Source_Probabilities$Source_Both))
-
-DPM_hitscores <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3]
-PA_Hitscores <- Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)
-
-Difference <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3] - Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)
-
-#Comparison <- cbind(DPM_hitscores, PA_Hitscores, Difference)
-#boxplot(Difference)
-#length(which(Difference >0))
 
 # hits
 #x11()
@@ -588,9 +603,20 @@ Difference <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3] - Michae
 #geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(50, 100, 10), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
 #           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-Source_Probabilities$Source_Miss))
 
-#x11()
-#perspGP(surface=t(probs$TwoD_miss),aggregate_size=5,surface_type="prob",phiGP=70,thetaGP=-10)
 
-#x11()
-#perspGP(surface=t(probs$TwoD_Both),aggregate_size=3,surface_type="prob")
-#############################################################################################################################################
+###########################################################################################################################################
+
+# HITSCORE COMAPRISON
+
+DPM_hitscores[p] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3]
+PA_Hitscores[p] <- Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)
+Difference[p] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3] - Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)
+
+Comparison <- cbind(DPM_hitscores, PA_Hitscores, Difference)
+length(which(Difference >0))
+boxplot(Difference)
+}
+
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
