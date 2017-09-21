@@ -18,7 +18,7 @@ library(RgeoProfile)
 
 Poisson_Parameter <- function(x, y, mu_x, mu_y, trap_radius, t, Sd_x, Sd_y, hazard_param = 1)
                      	{
-				co_efficient <- hazard_param*t*(trap_radius^2)*(2*pi*Sd_x*Sd_y)^(-1)
+				co_efficient <- hazard_param*t*(pi*trap_radius^2)*(2*pi*Sd_x*Sd_y)^(-1)
 				param <- co_efficient*exp( -0.5*( (latlon_to_bearing(y, x, y, mu_x)$gc_dist)^2/(Sd_x*Sd_x) + (latlon_to_bearing(y, mu_x, mu_y, mu_x)$gc_dist)^2/(Sd_y*Sd_y) ) )
 				return(param)
                      }
@@ -145,14 +145,14 @@ Extract_Params <- function(Simulated_Data, Trap_Data, PA_x_grid_cells = 10, PA_y
       Hits_Only <- subset(Trap_Data, Hits != 0)
 			Miss_Only <- subset(Trap_Data, Hits == 0)
 			Simulated_Data <- cbind(Simulated_Data$latitude, Simulated_Data$longitude)
-			#pairwise <- pairwise_distance(Simulated_Data)
-			#Sd_x <- 0.5*mean(pairwise$distance, na.rm = TRUE)
+			pairwise <- pairwise_distance(Simulated_Data)
+			NND <- 0.5*mean(pairwise$distance, na.rm = TRUE)
 			#Sd_y <- 0.5*mean(pairwise$distance, na.rm = TRUE)
 
       params <- list(n_sources = n_sources, PA_x_grid_cells = PA_x_grid_cells, PA_y_grid_cells = PA_y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
 				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
 				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only, Long_Max_Bound = Long_Max_Bound, n_cores = n_cores,
-					  MnMx_Long= MnMx_Long, MnMx_Lat= MnMx_Lat, n_offenders = n_offenders)
+					  MnMx_Long= MnMx_Long, MnMx_Lat= MnMx_Lat, n_offenders = n_offenders, NND = NND)
 			return(params)
 			}
 
@@ -445,9 +445,9 @@ plot_sources <- function(Data_Params, Probs)
 				 if(Data_Params$n_sources == 1)
 				 {
 				 #x11()
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Hits, col = "darkgreen", nlevels = 5)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Miss,col = "red",add=TRUE, nlevels = 5)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$SS_Both,col = "blue", add=TRUE, nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Hits, col = "darkgreen", nlevels = 5)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Miss,col = "red",add=TRUE, nlevels = 10)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Both,col = "blue", add=TRUE, nlevels = 5)
 				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
 				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
 
@@ -460,7 +460,7 @@ plot_sources <- function(Data_Params, Probs)
 				 #par(mfrow=c(2,2))
 			 } else {
 				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Hits, col = "darkgreen", nlevels = 5)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Miss,col = "red",add=TRUE, nlevels = 3)
+				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Miss,col = "red",add=TRUE, nlevels = 10)
 				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Both,col = "blue",add=TRUE, nlevels = 5)
 				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
 				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
@@ -576,42 +576,5 @@ PA_simulation <- function(replications = 5, no_x_traps = 5, no_y_traps = 5, n_of
 	 }
 		return(list(DPM_hitscores=DPM_hitscores, PA_Hitscores= PA_Hitscores, Difference = Difference))
 	 }
-
-################################################################################
-
-
-################################################################################
-################################ SIMULATION ####################################
-################################################################################
-
-misc_sim <- PA_simulation(replications = 5, no_x_traps =3 , no_y_traps = 3, n_sources = 1, n_cores = 1, PA_x_grid_cells = 10, PA_y_grid_cells= 10, n_offenders = 10, alpha = 0)
-
-misc_sim$Source_Probabilities$Source_Both <- expandMatrix(misc_sim$Source_Probabilities$Source_Both, 500, 500)
-misc_sim$Source_Probabilities$Source_Hits <- expandMatrix(misc_sim$Source_Probabilities$Source_Hits, 500, 500)
-misc_sim$Source_Probabilities$Source_Miss <- expandMatrix(misc_sim$Source_Probabilities$Source_Miss, 500, 500)
-
-################################################################################
-# PLOTTING
-#hits <- geoData(Data_parameters$Hits_Only$Longitude, Data_parameters$Hits_Only$Latitude)
-#misses <- geoDataSource(Data_parameters$Miss_Only$Longitude, Data_parameters$Miss_Only$Latitude)
-
-# the map alone
-x11(display = "Original")
-geoPlotMap(data = misc_sim$hit_data, source = misc_sim$s, params = misc_sim$hit_params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("darkred", "red", "orange", "yellow"),#
-          crimeCol = "darkgreen", crimeCex = 2, sourceCol = "blue", sourceCex = 2, surface = misc_sim$m$geoProfile)
-
-x11()
-geoPlotMap(data = misc_sim$hit_data, source = misc_sim$s, params = misc_sim$master_params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("darkred", "red", "orange", "yellow"),
-						crimeCol = "darkgreen", crimeCex = 2, sourceCol = "red", sourceCex = 2, surface = rank(-misc_sim$Source_Probabilities$Source_Both))
-
-# hits
-x11()
-geoPlotMap(data = misc_sim$hit_data, params = misc_sim$master_params, source = misc_sim$s, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("darkred","red", "orange", "yellow"),
-           crimeCol = "darkgreen", crimeCex = 2, sourceCol = "red", sourceCex = 2, surface = rank(-misc_sim$Source_Probabilities$Source_Hits))
-
-# misses
-#x11("Misses")
-#geoPlotMap(data = hits, source = misses, params = params, breakPercent = seq(50, 100, 10), mapType = "roadmap", contourCols =c("red", "orange", "yellow", "white"),
-#           crimeCol = "darkgreen", crimeCex = 5, sourceCol = "red", sourceCex = 5, surface = rank(-Source_Probabilities$Source_Miss))
 
 ################################################################################
