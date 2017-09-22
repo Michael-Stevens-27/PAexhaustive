@@ -111,16 +111,12 @@ sigma_hs <- c()
   hit_params$output$latitude_minMax <- master_params$output$latitude_minMax
   #m <- geoMCMC(data=hit_data, params= hit_params)
 
-for(i in 1:length(sigma))
-  {
   ### PA ###
   Trap_Data <- as.data.frame(Trap_Data)
-  Data_parameters <- Extract_Params(sim, Trap_Data, PA_x_grid_cells = 100, PA_y_grid_cells = 100, Guard_Rail = 0.05, Trap_Radius = detection_TR, n_sources = n_sources, n_cores = 1, n_offenders = n_offenders, Sd_x = i, Sd_y = i, Time = 1)
+  Data_parameters <- Extract_Params(sim, Trap_Data, PA_x_grid_cells = 100, PA_y_grid_cells = 100, Guard_Rail = 0.05, Trap_Radius = detection_TR, n_sources = n_sources, n_cores = 1, n_offenders = n_offenders, Time = 1)
   Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
   Source_Probabilities <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
-  print(i)
-  sigma_hs[i] <- Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
-  }
+  hit_score <-  Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
 
 min(sigma_hs)
 plot(sigma, sigma_hs, type = "l")

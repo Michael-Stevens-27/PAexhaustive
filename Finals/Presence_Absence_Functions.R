@@ -144,15 +144,15 @@ Extract_Params <- function(Simulated_Data, Trap_Data, PA_x_grid_cells = 10, PA_y
         }
       Hits_Only <- subset(Trap_Data, Hits != 0)
 			Miss_Only <- subset(Trap_Data, Hits == 0)
-			Simulated_Data <- cbind(Simulated_Data$latitude, Simulated_Data$longitude)
-			pairwise <- pairwise_distance(Simulated_Data)
-			NND <- 0.5*mean(pairwise$distance, na.rm = TRUE)
-			#Sd_y <- 0.5*mean(pairwise$distance, na.rm = TRUE)
+			trapping_locations <- cbind(Hits_Only$Latitude, Hits_Only$Longitude)
+			pairwise <- pairwise_distance(trapping_locations)
+			Sd_x <- 0.5*mean(pairwise$distance, na.rm = TRUE)
+		  Sd_y <- 0.5*mean(pairwise$distance, na.rm = TRUE)
 
       params <- list(n_sources = n_sources, PA_x_grid_cells = PA_x_grid_cells, PA_y_grid_cells = PA_y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
 				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
 				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only, Long_Max_Bound = Long_Max_Bound, n_cores = n_cores,
-					  MnMx_Long= MnMx_Long, MnMx_Lat= MnMx_Lat, n_offenders = n_offenders, NND = NND)
+					  MnMx_Long= MnMx_Long, MnMx_Lat= MnMx_Lat, n_offenders = n_offenders)
 			return(params)
 			}
 
