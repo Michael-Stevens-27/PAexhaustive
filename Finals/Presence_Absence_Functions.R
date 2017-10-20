@@ -143,7 +143,7 @@ pairwise_distance <- function(points){
 	distance[distance==0] <- NA
 	distance_min <- apply(distance, 1, min, na.rm = TRUE)
 	distance_min[distance_min =="Inf"] <- NA
-	SD_TR <- list(distance = distance)
+	SD_TR <- list(distance = distance, distance_min = distance_min)
 	return(SD_TR)
 }
 
@@ -155,7 +155,7 @@ pairwise_distance <- function(points){
 #
 ################################################################################
 
-Extract_Params <- function(Simulated_Data, Trap_Data, PA_x_grid_cells = 10, PA_y_grid_cells = 10, Time = 1, Trap_Radius = 1, n_offenders = 1, Sd_x = 1, Sd_y = 1, Guard_Rail = 0.05, n_sources = 1, n_cores = 1)
+Extract_Params <- function(Simulated_Data, Trap_Data, PA_x_grid_cells = 10, PA_y_grid_cells = 10, Time = 1, Trap_Radius = 1, n_offenders = 1, Guard_Rail = 0.05, n_sources = 1, n_cores = 1, Sd_x = 1, Sd_y = 1)
 			{
 			colnames(Trap_Data) <- c("Longitude", "Latitude", "Hits")
 			Trap_Data <- data.frame(Trap_Data)
@@ -180,9 +180,9 @@ Extract_Params <- function(Simulated_Data, Trap_Data, PA_x_grid_cells = 10, PA_y
       Hits_Only <- subset(Trap_Data, Hits != 0)
 			Miss_Only <- subset(Trap_Data, Hits == 0)
 			trapping_locations <- cbind(Hits_Only$Latitude, Hits_Only$Longitude)
-			pairwise <- pairwise_distance(trapping_locations)
-			Sd_x <- 0.5*mean(pairwise$distance, na.rm = TRUE)
-		  Sd_y <- 0.5*mean(pairwise$distance, na.rm = TRUE)
+			#pairwise <- pairwise_distance(trapping_locations)
+			#Sd_x <- 0.5*mean(pairwise$distance_min, na.rm = TRUE)
+		  #Sd_y <- 0.5*mean(pairwise$distance_min, na.rm = TRUE)
 
       params <- list(n_sources = n_sources, PA_x_grid_cells = PA_x_grid_cells, PA_y_grid_cells = PA_y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
 				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
@@ -522,26 +522,23 @@ plot_sources <- function(Data_Params, Probs)
 
 ################################################################################
 
-trap_assignment_data <- function(simulation, sim_params, n_traps_x, n_traps_y, title)
+trap_assignment_data <- function(simulation, sim_params, sources, trap_range = c(10,100), title)
 	{
 	#### makee a grid of traps
-	lon_dist <- latlon_to_bearing(sim_params$output$latitude_minMax[1], sim_params$output$longitude_minMax[1], sim_params$output$latitude_minMax[1], sim_params$output$longitude_minMax[2])$gc_dist
-	lat_dist <- latlon_to_bearing(sim_params$output$latitude_minMax[1], sim_params$output$longitude_minMax[1], sim_params$output$latitude_minMax[2], sim_params$output$longitude_minMax[1])$gc_dist
+  n_traps <- sample(trap_range[1]:trap_range[2], 1)
+  longs <- runif(n_traps, sim_params$output$longitude_minMax[1], sim_params$output$longitude_minMax[2])
+  lats <- runif(n_traps, sim_params$output$latitude_minMax[1], sim_params$output$latitude_minMax[2])
+  trap_loc <- cbind(longs, lats)
 
-	lats <- seq(sim_params$output$latitude_minMax[1], sim_params$output$latitude_minMax[1] + ((lon_dist/lat_dist)*(sim_params$output$latitude_minMax[2] - sim_params$output$latitude_minMax[1])),
-             (lon_dist/lat_dist)*(sim_params$output$latitude_minMax[2] - sim_params$output$latitude_minMax[1])/(n_traps_y-1))
-	#lats <- seq(sim_params$output$latitude_minMax[1], sim_params$output$latitude_minMax[2], (lon_dist/lat_dist)*(sim_params$output$latitude_minMax[2] - sim_params$output$latitude_minMax[1])/(n_traps_y-1))
+  pairwise_traps <- pairwise_distance(trap_loc)
+  detection_TR <- 0.5*mean(pairwise_traps$distance_min, na.rm = TRUE)
 
-	longs <- seq(sim_params$output$longitude_minMax[1], sim_params$output$longitude_minMax[2], (sim_params$output$longitude_minMax[2] - sim_params$output$longitude_minMax[1])/(n_traps_x-1))
-	#lats <- seq(sim_params$output$latitude_minMax[1], sim_params$output$latitude_minMax[2], (sim_params$output$latitude_minMax[2] - sim_params$output$latitude_minMax[1])/(n_traps_y-1))
-	trap_loc <- expand.grid(longs, lats)
-	detection_TR <- 0.49*min(latlon_to_bearing(trap_loc[1,2], trap_loc[1,1], trap_loc[2,2], trap_loc[2,1])$gc_dist, latlon_to_bearing(trap_loc[1,2], trap_loc[1,1], trap_loc[n_traps_x+1,2], trap_loc[n_traps_x+1,1])$gc_dist)
-  #par(mfrow=c(1,2))
+  #### plot 1 - rDPM data
   plot(trap_loc, cex = 1.5, ylab = "Latitude", xlab = "Longitude")
-  #xlim = c(sim_params$output$longitude_minMax[1],sim_params$output$longitude_minMax[2]), ylim = c(sim_params$output$latitude_minMax[1], sim_params$output$latitude_minMax[2]))
-  #title(main=title)
+  title(main=title)
   points(simulation$longitude, simulation$latitude, pch = 15, col= "green", cex = 1)
   points(simulation$source_lon, simulation$source_lat, col ="blue", pch = 18, cex = 2.5)
+  #symbols(x=trap_loc[,1], y=trap_loc[,2], circles=rep(0.003,length(trap_loc[,1])), add=T, inches=F)
 
 	##### distance metric
 	lat_long <- cbind(simulation$longitude, simulation$latitude)
@@ -561,23 +558,51 @@ trap_assignment_data <- function(simulation, sim_params, n_traps_x, n_traps_y, t
 	detected_by <- length(which(all_distances[,crime] <= detection_TR))
   Trap_data[crime,3] <- detected_by
 	}
-  #the_hits <- subset(Trap_data, Trap_data$hit_miss >0)
-  #the_miss <- subset(Trap_data, Trap_data$hit_miss  == 0)
-  #lon_max <- max(the_hits$Var1, the_miss$Var1)
-  #lon_min <- min(the_hits$Var1, the_miss$Var1)
-  #lat_max <- max(the_hits$Var2, the_miss$Var2)
-  #lat_min <- min(the_hits$Var2, the_miss$Var2)
-  #lon_minmax <- c(lon_min, lon_max)
-  #lat_minmax <- c(lat_min, lat_max)
-  #plot(the_hits$Var1, the_hits$Var2, cex = the_hits$hit_miss, ylab = "Latitude", xlab = "Longitude", col = "green", pch = 19, xlim = lon_minmax, ylim = lat_minmax)
-  #points(the_miss$Var1, the_miss$Var2, cex = 1, col = "red", pch = 4)
-  #points(simulation$source_lon, simulation$source_lat, col ="blue", pch = 18, cex = 2.5)
-	return(list(Trap_data = Trap_data, detection_TR= detection_TR))
+
+  Trap_data <- as.data.frame(Trap_data)
+  the_hits <- subset(Trap_data, Trap_data$hit_miss >0)
+  the_miss <- subset(Trap_data, Trap_data$hit_miss  == 0)
+  lon_max <- max(the_hits$longs, the_miss$longs)
+  lon_min <- min(the_hits$longs, the_miss$longs)
+  lat_max <- max(the_hits$lats, the_miss$lats)
+  lat_min <- min(the_hits$lats, the_miss$lats)
+  lon_minmax <- c(lon_min, lon_max)
+  lat_minmax <- c(lat_min, lat_max)
+
+  sd_hits <- cbind(the_hits$longs, the_hits$lats)
+  pw_dist <- pairwise_distance(sd_hits)
+  Sd <- 0.5*mean(pw_dist$distance_min, na.rm = TRUE)
+
+  source_trap_dist <- matrix(NA, nrow = length(sources$source_longitude), ncol = length(trap_loc[,1]))
+
+  for(c in 1:length(sources$source_longitude))
+	{
+		for(d in 1:length(trap_loc[,1]))
+		{
+			source_trap_dist[c,d] <- latlon_to_bearing(trap_loc[d,2], trap_loc[d,1], sources$source_latitude[c], sources$source_longitude[c])$gc_dist
+		}
+	}
+
+  traps_near_sources <- matrix(NA, nrow = length(sources$source_longitude), ncol = 5)
+
+	for(Sources in 1:length(sources$source_longitude))
+	{
+	one_SD <- length(which(source_trap_dist[Sources ,] <= Sd))
+  two_SD <- length(which(source_trap_dist[Sources ,] <= 2*Sd))
+  three_SD <- length(which(source_trap_dist[Sources,] <= 3*Sd))
+  traps_near_sources[Sources,] <- cbind(sources$source_longitude[Sources], sources$source_latitude[Sources], one_SD, two_SD, three_SD)
+  }
+
+  ##### plot 2 - trap data
+  plot(the_hits$longs, the_hits$lats, cex = the_hits$hit_miss, ylab = "Latitude", xlab = "Longitude", col = "green", pch = 19, xlim = lon_minmax, ylim = lat_minmax)
+  points(the_miss$longs, the_miss$lats, cex = 1, col = "red", pch = 4)
+  points(simulation$source_lon, simulation$source_lat, col ="blue", pch = 18, cex = 2.5)
+	return(list(Trap_data = Trap_data, Sd = Sd, detection_TR= detection_TR, traps_near_sources = traps_near_sources))
 	}
 
 ################################################################################
 
-PA_simulation <- function(replications = 5, no_x_traps = 5, no_y_traps = 5, n_offenders = 5, n_sources, n_cores = 1, PA_x_grid_cells = 50, PA_y_grid_cells= 50, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 3, sigma = 1, tau = 1, guardRail = 0.05)
+PA_simulation <- function(replications = 5, Trap_Range = c(10,50), n_offenders = 5, n_sources = n_sources, n_cores = 1, PA_x_grid_cells = 50, PA_y_grid_cells= 50, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 3, sigma_range = c(1,3), tau_range = c(1,3), guardRail = 0.05)
 	 {
 		DPM_hitscores <- matrix(NA, ncol = replications, nrow = n_sources)
 		PA_Hitscores <- matrix(NA, ncol = replications, nrow = n_sources)
@@ -589,39 +614,38 @@ PA_simulation <- function(replications = 5, no_x_traps = 5, no_y_traps = 5, n_of
 		while(Rep <= replications)
 		{
       random_offenders <- rpois(1, n_offenders)
+      sigma <- runif(1, sigma_range[1], sigma_range[2])
+      tau <- runif(1, tau_range[1], tau_range[2])
 			sim <- rDPM(random_offenders, priorMean_longitude = priorMean_longitude, priorMean_latitude = priorMean_latitude, alpha = alpha, sigma = sigma, tau = tau)
 			if(length(unique(sim$group)) == n_sources)
 			{
 					point_data <- geoData(sim$longitude, sim$latitude)
 					master_params <- geoParams(data = point_data, sigma_mean = 1, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(point_data$longitude), priorMean_latitude = mean(point_data$latitude), guardRail = guardRail)
-					Trap_Data <- trap_assignment_data(sim, master_params, no_x_traps, no_y_traps, Rep)
-
+          s <- geoDataSource(sim$source_lon, sim$source_lat)
+          Trap_Data <- trap_assignment_data(simulation = sim, sim_params = master_params, sources = s, trap_range = Trap_Range, title = Rep)
 					if(length(which(Trap_Data$Trap_data$hit_miss>0))>1)
 							{
 								### DPM ###
 								dpm_hits <- subset(Trap_Data$Trap_data, Trap_Data$Trap_data[,3]>0)
-								dpm_hits <- dpm_hits[rep(1:nrow(dpm_hits), dpm_hits[,3]),]
+								##### For the dpm repeat the points that already exist given the number of trapped animals. dpm_hits <- dpm_hits[rep(1:nrow(dpm_hits), dpm_hits[,3]),]
 								dpm_misses <- subset(Trap_Data$Trap_data, Trap_Data$Trap_data[,3]==0)
 								trap_loc_data <- geoData(Trap_Data$Trap_data[,1], Trap_Data$Trap_data[,2])
-								s <- geoDataSource(sim$source_lon, sim$source_lat)
 								hit_data <- geoData(dpm_hits[,1], dpm_hits[,2])
-                points <- cbind(hit_data$longitude, hit_data$latitude)
-                pw_dist <- pairwise_distance(points)
-                Sd <- 0.5*mean(pw_dist$distance, na.rm = TRUE)
-								hit_params <- geoParams(data = hit_data, sigma_mean = Sd, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = guardRail)
+                hit_params <- geoParams(data = hit_data, sigma_mean = Trap_Data$Sd, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = guardRail)
 								hit_params$output$longitude_minMax <- master_params$output$longitude_minMax
 								hit_params$output$latitude_minMax <- master_params$output$latitude_minMax
 								m <- geoMCMC(data=hit_data, params= hit_params)
 
 								### PA ###
 								Trap_Data <- as.data.frame(Trap_Data)
-								Data_parameters <- Extract_Params(sim, Trap_Data, PA_x_grid_cells = PA_x_grid_cells, PA_y_grid_cells = PA_y_grid_cells, Guard_Rail = guardRail, Trap_Radius = Trap_Data$detection_TR, n_sources = n_sources, n_cores = n_cores, n_offenders = n_offenders)
+								Data_parameters <- Extract_Params(sim, Trap_Data, PA_x_grid_cells = PA_x_grid_cells, PA_y_grid_cells = PA_y_grid_cells, Guard_Rail = guardRail, Trap_Radius = Trap_Data$detection_TR, n_sources = n_sources, n_cores = n_cores, n_offenders = n_offenders, Sd_x = Trap_Data$Sd, Sd_y = Trap_Data$Sd)
 								Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
 								Source_Probabilities <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
 
 								DPM_hitscores[,Rep] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3]
 								PA_Hitscores[,Rep] <- Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
 								Difference[,Rep] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3] - Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
+                difference <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3] - Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
                 Pop_density[Rep] <- random_offenders
                 actual_hits[Rep] <- sum(Data_parameters$Hits_Only[,3])
                 actual_misses[Rep] <- length(Data_parameters$Miss_Only[,3])
@@ -635,5 +659,8 @@ PA_simulation <- function(replications = 5, no_x_traps = 5, no_y_traps = 5, n_of
 	 }
 
 ################################################################################
-simulation <- PA_simulation(replications = 1, no_x_traps = 7, no_y_traps = 7, n_offenders = 25, n_sources = 1, n_cores = 1, PA_x_grid_cells = 100, PA_y_grid_cells= 100, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0, sigma = 1, guardRail = 0.05)
+par(mfrow=c(1,2))
+simulation <- PA_simulation(replications = 100, Trap_Range = c(10,50), n_offenders = 25, n_sources = 1, n_cores = 1, PA_x_grid_cells = 50, PA_y_grid_cells= 50, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0, sigma_range = c(1,3), tau_range = c(1,3), guardRail = 0.05)
 save(simulation, file= "oneS-two_to_one.rdata")
+boxplot(simulation$difference)
+boxplot(c(multiple_points))
