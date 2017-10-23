@@ -89,20 +89,20 @@ contour(n_offenders, traps, hit_to_miss, nlevels = 20, xlab = "Traps", ylab = "N
 ################################################################################
 ########################## FINDING SENSIBLE PARAMS #############################
 ################################################################################
-
-par(mfrow=c(1,3))
-n_sources <- 1
+par(mfrow=c(1,2))
+n_sources <- 2
 n_offenders <- 25
 r_n_offenders <- rpois(1,n_offenders)
 sigma <- runif(1, 1, 3)
 tau <- runif(1, 1, 1)
 
-  sim <- rDPM(r_n_offenders, alpha = 0, sigma = sigma, tau)
+  sim <- rDPM(r_n_offenders, alpha = 1, sigma = sigma, tau)
   point_data <- geoData(sim$longitude, sim$latitude)
   ##### only need this for the lon/lat min max value with combine misses and hits - that's all, the rest of the params don't matter
   master_params <- geoParams(data = point_data, sigma_mean = 1, sigma_squared_shape = 2,  samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(point_data$longitude), priorMean_latitude = mean(point_data$latitude), guardRail = 0.05)
   s <- geoDataSource(sim$source_lon, sim$source_lat)
-  Trap_Data <- trap_assignment_data(simulation = sim, sim_params = master_params, sources = s, trap_range = c(10,50),"rDPM data")
+  Trap_Data <- trap_assignment_data(simulation = sim, sim_params = master_params, sources = s, trap_range = c(10,20),"rDPM data")
+
   Standard_dev <- Trap_Data$Sd
   detection_TR <- Trap_Data$detection_TR
   Trap_Data <- Trap_Data$Trap_data
@@ -121,7 +121,7 @@ tau <- runif(1, 1, 1)
 
   ### PA ###
   Trap_Data <- as.data.frame(Trap_Data)
-  Data_parameters <- Extract_Params(sim, Trap_Data, PA_x_grid_cells = 100, PA_y_grid_cells = 100, Guard_Rail = 0.05, Trap_Radius = detection_TR, n_sources = n_sources, n_cores = 1, n_offenders = n_offenders, Time = 1, Sd_x = Standard_dev, Sd_y = Standard_dev)
+  Data_parameters <- Extract_Params(sim, Trap_Data, PA_x_grid_cells = 10, PA_y_grid_cells = 10, Guard_Rail = 0.05, Trap_Radius = detection_TR, n_sources = n_sources, n_cores = 1, n_offenders = n_offenders, Time = 1, Sd_x = Standard_dev, Sd_y = Standard_dev)
   Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
   Source_Probabilities <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
   Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Hits)[,3]
@@ -142,7 +142,7 @@ geoPlotMap(data = hit_data, source = s, params = master_params, breakPercent = s
   					crimeCol = "darkgreen", crimeCex = 2, sourceCol = "red", sourceCex = 2, surface = m$geoProfile)
 
 x11()
-geoPlotMap(data = hit_data, source = s, params = master_params, breakPercent = seq(0, 10, 1), mapType = "roadmap", contourCols =c("darkred", "red", "orange", "yellow"),
+geoPlotMap(data = hit_data, source = s, params = master_params, breakPercent = seq(0, 100, 10), mapType = "roadmap", contourCols =c("darkred", "red", "orange", "yellow"),
 					crimeCol = "darkgreen", crimeCex = 2, sourceCol = "red", sourceCex = 2, surface = rank(-Source_Probabilities$LSource_Both))
 
 x11()
@@ -203,11 +203,12 @@ plot_ly(z = hs_z, type = "surface")
 n_offenders <- 25
 n_sources <- 1
 
-#sim <- rDPM(n_offenders, alpha = 0, sigma = 1)
+sim <- rDPM(n_offenders, alpha = 0, sigma = 1)
 point_data <- geoData(sim$longitude, sim$latitude)
 master_params <- geoParams(data = point_data, sigma_mean = 1, sigma_squared_shape = 2,  samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(point_data$longitude), priorMean_latitude = mean(point_data$latitude), guardRail = 0.05)
 par(mfrow=c(1,2))
-Trap_Data <- trap_assignment_data(sim, master_params, 5,5,"Title")
+s <- geoDataSource(sim$source_lon, sim$source_lat)
+Trap_Data <- trap_assignment_data(sim, master_params, sources =s, c(5,20),"Title")
 detection_TR <- Trap_Data$detection_TR
 Trap_Data <- Trap_Data$Trap_data
 
@@ -235,10 +236,10 @@ fixed_NO_HS <- c()
 pw_dist <- pairwise_distance(points)
 Sd <- 0.5*mean(pw_dist$distance, na.rm = TRUE)
 
-hit_params <- geoParams(data = hit_data, sigma_mean = Sd, sigma_squared_shape = 2*Sd, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = 0.05)
+hit_params <- geoParams(data = hit_data, sigma_mean = Trap_Data$Sd, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = 0.05)
 hit_params$output$longitude_minMax <- master_params$output$longitude_minMax
 hit_params$output$latitude_minMax <- master_params$output$latitude_minMax
-#m <- geoMCMC(data=hit_data, params= hit_params)
+m <- geoMCMC(data=hit_data, params= hit_params)
 Trap_Data <- as.data.frame(Trap_Data)
 
 geoReportHitscores(master_params, s, m$posteriorSurface)
@@ -248,8 +249,7 @@ TRS <- seq(0.5, 10, 0.05)
 NO_off <- seq(1,191, 1)
 
 for(i in 1:length(NO_off))
-{
-### PA ###
+
 Data_parameters <- Extract_Params(sim, Trap_Data, PA_x_grid_cells = 50, PA_y_grid_cells = 50, Guard_Rail = 0.05, Trap_Radius = detection_TR, n_sources = n_sources, n_cores = 1, n_offenders = NO_off[i], Time = 1)
 Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
 Source_Probabilities <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
@@ -262,8 +262,7 @@ Source_Probabilities <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
 
 #fixed_NO[i] <-  (Data_parameters$Trap_Radius^2)*(i)/(Data_parameters$Sd_x*Data_parameters$Sd_y)
 #fixed_NO_HS[i] <- Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
-print(i)
-}
+
 
 par(mfrow=c(2,2))
 
