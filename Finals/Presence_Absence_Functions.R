@@ -1,54 +1,20 @@
 rm(list = ls()) #remove all objects
 library(flux)
-library(gRbase) ## For the "combnPrim" function, efficiently listing combinations
-                ## Initial install, run commands:
-								## source("http://bioconductor.org/biocLite.R")
-								## biocLite("gRbase")
-library(parallel)
-library(RgeoProfile)
+library(gRbase)      ## For the "combnPrim" function, efficiently listing combinations
+                     ## Initial install, run commands:
+								     ## source("http://bioconductor.org/biocLite.R")
+								     ## biocLite("gRbase")
+library(parallel)    ## Package for paralellisation
+library(RgeoProfile) ## Package to run the dirichlet process mixture model
+
 ##_____________FUNCTIONS ______________##
 
-###### CLUSTER HITSCORE #################
-#geoReportHitscores <- function(params,source_data,surface)
-#{
-#sources <- cbind(source_data$source_longitude,source_data$source_latitude)
-#ordermat = matrix(0, params$output$latitude_cells, params$output$longitude_cells)
-#profile_order = order(surface)
-#for (i in 1:(params$output$latitude_cells*params$output$longitude_cells))
-#{
-#    ordermat[profile_order[i]] = i
-#    }
-#hitscoremat <<- 1 - ordermat/(params$output$latitude_cells*params$output$longitude_cells)
-#hitscoremat2 <- hitscoremat[nrow(hitscoremat):1, ]
-#xvec = seq(params$output$longitude_minMax[1], params$output$longitude_minMax[2],
-#    length = params$output$longitude_cells)
-#yvec = seq(params$output$latitude_minMax[1], params$output$latitude_minMax[2],
-#    length = params$output$latitude_cells)
-#xdiff = abs(outer(rep(1, nrow(sources)), xvec) - outer(sources[,
-#    1], rep(1, params$output$longitude_cells)))
-#ydiff = abs(outer(rep(1, nrow(sources)), yvec) - outer(sources[,
-#    2], rep(1, params$output$latitude_cells)))
-#msourcex = mapply(which.min, x = split(xdiff, row(xdiff)))
-#msourcey = params$output$longitude_cells - (mapply(which.min,
-#    x = split(ydiff, row(ydiff)))) + 1
-#if(nrow(sources) > 1) {
-#    hitscores = diag(hitscoremat2[msourcey, msourcex])
-#}
-#else {
-#    hitscores = hitscoremat2[msourcey, msourcex]
-#}
-#hit_output <<- cbind(sources, hitscores)
-#colnames(hit_output) <- c("lon", "lat", "hs")
-#return(hit_output)
-#}
-
-
 ################################################################################
-#
-# The "Poisson_Parameter" function returns the average number of hits we expect to see within a trap located at "(x, y)." This value
-# is an approximation of the integral of a bivariate normal distribution bounded by the trap radius. We state expected number of hits
-# is a value observed over some time interval, thus the multiplication by "t."
-#
+# The "Poisson_Parameter" function returns the average number of hits we expect to see within a sentinel site located at "(x, y)." This value
+# is an approximation of the integral of a bivariate normal distribution bounded by the site radius. We state expected number of hits
+# is a value observed over some time interval, thus the multiplication by "t." We also multiply by the value "hazard_param," the expected number of
+# sentinels we expect there to be within the entire search area.
+# example: Poisson_Parameter(x = 0.25, y = 0.25, mu_x = 0, mu_y = 0, trap_radius = 15, t = 60, Sd_x = 7, Sd_y = 7, hazard_param = 10)
 ################################################################################
 
 Poisson_Parameter <- function(x, y, mu_x, mu_y, trap_radius, t, Sd_x, Sd_y, hazard_param = 1)
@@ -59,11 +25,9 @@ Poisson_Parameter <- function(x, y, mu_x, mu_y, trap_radius, t, Sd_x, Sd_y, haza
                      }
 
 ################################################################################
-#
-# function to resize this sub-matrix to the original resolution
-# mat - matrix to be resized
-# output_long/lat - new number of long/let cells
-#
+# Function to resize this sub-matrix to the original resolution, mat-matrix to be resized, output_long/lat - new number of long/let cells
+# Example: my_mat <- matrix(1:9, 3, 3)
+# expandMatrix(my_mat, 20, 20)
 ################################################################################
 
 expandMatrix <- function(mat,output_long,output_lat)
@@ -92,6 +56,8 @@ expandMatrix <- function(mat,output_long,output_lat)
   }
 
 ################################################################################
+# Function to calculate euclidean distance between two points specified in latitude and longitude
+################################################################################
 
 latlon_to_bearing <- function(origin_lat, origin_lon, dest_lat, dest_lon)
 
@@ -118,10 +84,8 @@ latlon_to_bearing <- function(origin_lat, origin_lon, dest_lat, dest_lon)
 }
 
 ################################################################################
-#
-# The "pairwise_distance" function returns half the average of the minimum distances between traps. This value takes the place of the
-# x and y standard deviations in our model.
-#
+# The "pairwise_distance" function returns half the average of the minimum distances between sentinel sites.
+# We use half the mean nearest neighbour distance (NND) between sites for site radius and half the mean NND between hits for the standard deviation
 ################################################################################
 
 pairwise_distance <- function(points){
@@ -148,11 +112,10 @@ pairwise_distance <- function(points){
 }
 
 ################################################################################
-#
 # The "Extract_Params" function returns a list of parameters for an "n_sources" source model. Should "n_sources" be set to anything greater
-# than one, "Extract_Params" will produce an additional parameter "AP_allocation," a list ilustrating the number of ways of choosing
-# "n_sources" sources from the total number of grid cells.
-#
+# than one, "Extract_Params" will produce an additional parameter "AP_allocation," a list illustrating the number of ways of choosing
+# "n_sources" sources from the total number of grid cells, the most computationally expensive action.
+# example: Extract_Params(cbind(1:10,1:10, sample(0:10, 10, replace=T)), PA_x_grid_cells = 10, PA_y_grid_cells = 10, Time = 1, Trap_Radius = 1, n_offenders = 1, Guard_Rail = 0.05, n_sources = 1, n_cores = 1, Sd_x = 1, Sd_y = 1)
 ################################################################################
 
 Extract_Params <- function(Trap_Data, PA_x_grid_cells = 10, PA_y_grid_cells = 10, Time = 1, Trap_Radius = 1, n_offenders = 1, Guard_Rail = 0.05, n_sources = 1, n_cores = 1, Sd_x = 1, Sd_y = 1)
@@ -161,81 +124,76 @@ Extract_Params <- function(Trap_Data, PA_x_grid_cells = 10, PA_y_grid_cells = 10
 			Trap_Data <- data.frame(Trap_Data)
 			long_diff <- (max(Trap_Data$Longitude) - min(Trap_Data$Longitude))
 			lat_diff <- (max(Trap_Data$Latitude) - min(Trap_Data$Latitude))
-
 			MnMx_Long <- c(min(Trap_Data$Longitude), max(Trap_Data$Longitude))
 			MnMx_Lat <- c(min(Trap_Data$Latitude), max(Trap_Data$Latitude))
-
 			Long_Max_Bound <- MnMx_Long[2] + (Guard_Rail*long_diff)
 			Long_Min_Bound <- MnMx_Long[1] - (Guard_Rail*long_diff)
 			Lat_Max_Bound <-  MnMx_Lat[2] + (Guard_Rail*lat_diff)
 			Lat_Min_Bound <- MnMx_Lat[1] - (Guard_Rail*lat_diff)
-			Anchor_Points_Long <- seq(min(Long_Min_Bound,Long_Max_Bound), max(Long_Min_Bound,Long_Max_Bound), abs(Long_Max_Bound-Long_Min_Bound)/(PA_x_grid_cells - 1))
-			Anchor_Points_Lat <- seq(min(Lat_Min_Bound, Lat_Max_Bound), max(Lat_Min_Bound, Lat_Max_Bound), abs(Lat_Max_Bound-Lat_Min_Bound)/(PA_y_grid_cells - 1))
-			if(n_sources > 1)
-      {
-        AP_allocation <- t(combnPrim(PA_x_grid_cells*PA_y_grid_cells, n_sources))
-      } else {
-        AP_allocation <- "NA"
-        }
+			Source_Points_Long <- seq(min(Long_Min_Bound,Long_Max_Bound), max(Long_Min_Bound,Long_Max_Bound), abs(Long_Max_Bound-Long_Min_Bound)/(PA_x_grid_cells - 1))
+			Source_Points_Lat <- seq(min(Lat_Min_Bound, Lat_Max_Bound), max(Lat_Min_Bound, Lat_Max_Bound), abs(Lat_Max_Bound-Lat_Min_Bound)/(PA_y_grid_cells - 1))
+      # Generate a list of locations of n sources given the number of potential sources
+      if(n_sources > 1) {AP_allocation <- t(combnPrim(PA_x_grid_cells*PA_y_grid_cells, n_sources))}
+      else{AP_allocation <- "NA"}
       Hits_Only <- subset(Trap_Data, Hits != 0)
 			Miss_Only <- subset(Trap_Data, Hits == 0)
 			trapping_locations <- cbind(Hits_Only$Latitude, Hits_Only$Longitude)
-			#pairwise <- pairwise_distance(trapping_locations)
-			#Sd_x <- 0.5*mean(pairwise$distance_min, na.rm = TRUE)
-		  #Sd_y <- 0.5*mean(pairwise$distance_min, na.rm = TRUE)
 
       params <- list(n_sources = n_sources, PA_x_grid_cells = PA_x_grid_cells, PA_y_grid_cells = PA_y_grid_cells, Sd_x = Sd_x, Sd_y = Sd_y,
-				    Trap_Radius=Trap_Radius, Time=Time, Anchor_Points_Long=Anchor_Points_Long, Anchor_Points_Lat=Anchor_Points_Lat,
-				    AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only, Long_Max_Bound = Long_Max_Bound, n_cores = n_cores,
-					  MnMx_Long= MnMx_Long, MnMx_Lat= MnMx_Lat, n_offenders = n_offenders)
-			return(params)
+      Trap_Radius=Trap_Radius, Time=Time, Source_Points_Long=Source_Points_Long, Source_Points_Lat=Source_Points_Lat,
+      AP_allocation=AP_allocation, Hits_Only=Hits_Only, Miss_Only=Miss_Only, Long_Max_Bound = Long_Max_Bound, n_cores = n_cores,
+      MnMx_Long= MnMx_Long, MnMx_Lat= MnMx_Lat, n_offenders = n_offenders)
+      return(params)
 			}
 
 ################################################################################
-#
-# The "Trap_Po_Parameters" function returns the poisson parameter for each trap in the form of an array. Where the individual entries of
+# The "Trap_Po_Parameters" function returns the poisson parameter for each site in the form of an array. Where the individual entries of
 # matrix i represent the Poisson parameters of event i.
-#
+# example:
+# misc_params <- Extract_Params(cbind(1:10,1:10, sample(0:10, 10, replace=T)), PA_x_grid_cells = 10, PA_y_grid_cells = 10, Time = 25, Trap_Radius = 10, n_offenders = 1, Guard_Rail = 0.05, n_sources = 1, n_cores = 1, Sd_x = 2.5, Sd_y = 2.5)
+# Trap_Po_Parameters(misc_params)
+# rm(misc_params)
 ################################################################################
 
 Trap_Po_Parameters <- function(Params)
 		{
-		Po_Array_Hits <- array(NA, c(length(Params$Anchor_Points_Long), length(Params$Anchor_Points_Lat), length(Params$Hits_Only$Longitude) ) )
-		long_lat_grid <- expand.grid(Params$Anchor_Points_Long, Params$Anchor_Points_Lat)
+		Po_Array_Hits <- array(NA, c(length(Params$Source_Points_Long), length(Params$Source_Points_Lat), length(Params$Hits_Only$Longitude) ) )
+		long_lat_grid <- expand.grid(Params$Source_Points_Long, Params$Source_Points_Lat)
 
 		for(i in 1:length(Params$Hits_Only$Longitude))
-		{
-			Po_hits <- mapply(Poisson_Parameter, Params$Hits_Only$Longitude[i], Params$Hits_Only$Latitude[i], mu_x = long_lat_grid$Var1, mu_y = long_lat_grid$Var2,
-												trap_radius = Params$Trap_Radius, t = Params$Time, Sd_x = Params$Sd_x, Sd_y = Params$Sd_y, hazard_param = Params$n_offenders)
-			Hit_matrix <- matrix(Po_hits, nrow = length(Params$Anchor_Points_Long), ncol = length(Params$Anchor_Points_Lat))
-			Po_Array_Hits[, ,i] <-  Hit_matrix
+		  {
+			     Po_hits <- mapply(Poisson_Parameter, Params$Hits_Only$Longitude[i], Params$Hits_Only$Latitude[i], mu_x = long_lat_grid$Var1, mu_y = long_lat_grid$Var2,
+										       trap_radius = Params$Trap_Radius, t = Params$Time, Sd_x = Params$Sd_x, Sd_y = Params$Sd_y, hazard_param = Params$n_offenders)
+			     Hit_matrix <- matrix(Po_hits, nrow = length(Params$Source_Points_Long), ncol = length(Params$Source_Points_Lat))
+			     Po_Array_Hits[, ,i] <-  Hit_matrix
+		  }
 
-		}
 		if(length(Params$Miss_Only$Longitude)>0)
-		{
-		Po_Array_Miss <- array(NA, c(length(Params$Anchor_Points_Long), length(Params$Anchor_Points_Lat), length(Params$Miss_Only$Longitude) ) )
+		  {
+		      Po_Array_Miss <- array(NA, c(length(Params$Source_Points_Long), length(Params$Source_Points_Lat), length(Params$Miss_Only$Longitude) ) )
 
-		for(j in 1:length(Params$Miss_Only$Longitude))
-	 		{
-		  Po_miss <- mapply(Poisson_Parameter, Params$Miss_Only$Longitude[j], Params$Miss_Only$Latitude[j], mu_x = long_lat_grid$Var1, mu_y = long_lat_grid$Var2,
-											 trap_radius = Params$Trap_Radius, t = Params$Time, Sd_x = Params$Sd_x, Sd_y = Params$Sd_y, hazard_param = Params$n_offenders)
-		  Miss_matrix <- matrix(Po_miss, nrow = length(Params$Anchor_Points_Long), ncol = length(Params$Anchor_Points_Lat))
-		  Po_Array_Miss[, ,j] <-  Miss_matrix
-	 		}
-	   	Po_Param <- list(Po_Array_Hits = Po_Array_Hits, Po_Array_Miss = Po_Array_Miss)
-			return(Po_Param)
-		}
-		else{
-		Po_Param <- list(Po_Array_Hits = Po_Array_Hits)
-		return(Po_Param)
-		}
+		        for(j in 1:length(Params$Miss_Only$Longitude))
+	 		          {
+		            Po_miss <- mapply(Poisson_Parameter, Params$Miss_Only$Longitude[j], Params$Miss_Only$Latitude[j], mu_x = long_lat_grid$Var1, mu_y = long_lat_grid$Var2,
+											             trap_radius = Params$Trap_Radius, t = Params$Time, Sd_x = Params$Sd_x, Sd_y = Params$Sd_y, hazard_param = Params$n_offenders)
+		            Miss_matrix <- matrix(Po_miss, nrow = length(Params$Source_Points_Long), ncol = length(Params$Source_Points_Lat))
+		            Po_Array_Miss[, ,j] <-  Miss_matrix
+	 		          }
+	   	          Po_Param <- list(Po_Array_Hits = Po_Array_Hits, Po_Array_Miss = Po_Array_Miss)
+			          return(Po_Param)
+		  }
+		  else{ Po_Param <- list(Po_Array_Hits = Po_Array_Hits)
+		  return(Po_Param)
+		      }
 		}
 
 ###############################################################################
-#
-# The "Multisource_probs" function returns the porbability for source locations. Given the user specifies the number of sources expected.
-#
-################################################################################
+# The "Multisource_probs" function returns the probability surfaces for the hits, misses and both combine.
+# Example:
+# misc_params <- Extract_Params(cbind(1:10,1:10, sample(0:3, 10, replace=T)), PA_x_grid_cells = 5, PA_y_grid_cells = 5, Time = 5, Trap_Radius = 20, n_offenders = 5, Guard_Rail = 0.05, n_sources = 1, n_cores = 1, Sd_x = 2, Sd_y = 2)
+# misc_po_params <- Trap_Po_Parameters(misc_params)
+# Multisource_probs(Data_Params = misc_params, Po_Params = misc_po_params)
+###############################################################################
 
 Multisource_probs <- function(Data_Params, Po_Params)
 		{
@@ -334,9 +292,9 @@ Multisource_probs <- function(Data_Params, Po_Params)
 					final_miss[i] <- sum(S_probs[a, Data_Params$n_sources + 2])
 					final_both[i] <- sum(S_probs[a, Data_Params$n_sources + 3])
 				}
-				Source_Hits <- matrix(final_hits, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
-				Source_Miss <- matrix(final_miss, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
-			  Source_Both <- matrix(final_both, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
+				Source_Hits <- matrix(final_hits, ncol = length(Data_Params$Source_Points_Lat), nrow = length(Data_Params$Source_Points_Long))
+				Source_Miss <- matrix(final_miss, ncol = length(Data_Params$Source_Points_Lat), nrow = length(Data_Params$Source_Points_Long))
+			  Source_Both <- matrix(final_both, ncol = length(Data_Params$Source_Points_Lat), nrow = length(Data_Params$Source_Points_Long))
 
 				Source_Hits <-  Source_Hits/sum(Source_Hits)
 				Source_Miss <-  Source_Miss/sum(Source_Miss)
@@ -406,7 +364,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
     					a <- parRapply(cluster, S_probs[,1:Data_Params$n_sources], FUN=function (x) any(x == i))
     					final_hits[i] <- sum(S_probs[a, Data_Params$n_sources + 1])
     				}
-    				Source_Hits <- matrix(final_hits, ncol = length(Data_Params$Anchor_Points_Lat), nrow = length(Data_Params$Anchor_Points_Long))
+    				Source_Hits <- matrix(final_hits, ncol = length(Data_Params$Source_Points_Lat), nrow = length(Data_Params$Source_Points_Long))
     				Source_Hits <-  Source_Hits/sum(Source_Hits)
     				Source_Prob <- list( Source_Hits = Source_Hits)
     				return(Source_Prob)
@@ -414,20 +372,23 @@ Multisource_probs <- function(Data_Params, Po_Params)
     				}
       }
 			}
+###############################################################################
+# The "PA_Hitscores" function reports the hitscores of sources taken from the Presence absence profile, much like the geoReportHitscores function
+# Example: PA_Hitscores(misc_params, misc_sources, PA_profile)
+###############################################################################
 
-################################################################################
-Michael_geoReportHitscores <- function(params, sources, probability_matrix)
+PA_Hitscores <- function(params, sources, probability_matrix)
 	 {
 	 hitscore <- c()
 	 for(k in 1:length(sources$source_longitude))
 	 {
 	 source_matrix <- matrix(NA, ncol = params$PA_y_grid_cells, nrow = params$PA_x_grid_cells)
-	 S_x <- rep(sources$source_longitude[k], length(params$Anchor_Points_Long))
-	 diff_x <- which.min(abs(S_x - params$Anchor_Points_Long))
+	 S_x <- rep(sources$source_longitude[k], length(params$Source_Points_Long))
+	 diff_x <- which.min(abs(S_x - params$Source_Points_Long))
 	 s_grid_long_index <- diff_x
 
-	 S_y <- rep(sources$source_latitude[k], length(params$Anchor_Points_Lat))
-	 diff_y <- which.min(abs(S_y - params$Anchor_Points_Lat))
+	 S_y <- rep(sources$source_latitude[k], length(params$Source_Points_Lat))
+	 diff_y <- which.min(abs(S_y - params$Source_Points_Lat))
 	 s_grid_lat_index <- diff_y
 
 	 source_matrix[s_grid_long_index, s_grid_lat_index] = T
@@ -446,76 +407,35 @@ Michael_geoReportHitscores <- function(params, sources, probability_matrix)
 		hitscores <- cbind(sources$source_longitude, sources$source_latitude, hitscore)
 	  return(hitscores = hitscores)
 	 }
-################################################################################
-#
-# The "plot1source" function plots a contour map of the single source probabilities
-#
-################################################################################
 
-plot_sources <- function(Data_Params, Probs)
-		   {
-				 if(Data_Params$n_sources == 1)
-				 {
-				 #x11()
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Hits, col = "darkgreen", nlevels = 10)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Miss,col = "red",add=TRUE, nlevels = 10)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Both,col = "blue", add=TRUE, nlevels = 10)
-				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
-				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
+###############################################################################
+# The "trap_assignment_data" function takes data generated by the "rDPM" function and converts it into
+# trap density data. The main input is the number of sentinels you expect there to be within your search area.
+# The function creates most of its parameters using this (e.g. the number of traps)
+# Given the rDPM output generate a collection of traps, generate a trap radius for the traps (0.5mean(nnd))
+# and construct densities for each trap given the rDPM data falls within the trap radius.
+###############################################################################
 
-				 #x11()
-				 #par(mfrow=c(1,3))
-				 #persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat,  SS_Prob$SS_Hits, col = "green")
-				 #persp(Data_Params$Anchor_Points_Long,Data_Params$Anchor_Points_Lat,  SS_Prob$SS_Miss, col = "red")
-				 #persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat,  SS_Prob$SS_Both, col = "blue")
-
-				 #par(mfrow=c(2,2))
-			 } else {
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Hits, col = "darkgreen", nlevels = 1)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Miss,col = "red",add=TRUE, nlevels = 5)
-				 contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Probs$Source_Both,col = "blue",add=TRUE, nlevels = 30)
-				 points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
-				 points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
-				#symbols(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude, circles = rep(Data_Params$Trap_Radius, length(Data_Params$Hits_Only$Longitude)), add = T, inches = F)
-
-				#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Hits, col = "darkgreen", nlevels = 5)
-				#	points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
-
-				#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Miss,col = "red", nlevels = 5)
-				#points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
-
-				#contour(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Both,col = "blue", nlevels = 5)
-				#points(Data_Params$Hits_Only$Longitude, Data_Params$Hits_Only$Latitude , pch = 16, col = "green")
-				#points(Data_Params$Miss_Only$Longitude, Data_Params$Miss_Only$Latitude , pch = 16, col = "red")
-				#points(DPM_SIM$source_lon, DPM_SIM$source_lat, pch = 16, col = "blue")
-				#
-				#x11()
-				#par(mfrow=c(1,3))
-				#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Hits,  col = "green")
-				#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Miss,  col = "red")
-				#persp(Data_Params$Anchor_Points_Long, Data_Params$Anchor_Points_Lat, Two_Source$TwoD_Both,  col = "blue")
-			}
-			}
-
-################################################################################
-
-trap_assignment_data <- function(simulation, sim_params, sources, trap_range = c(10,100), title)
+trap_assignment_data <- function(simulation, sim_params, sources, exp_population = 15, title)
 	{
-	#### makee a grid of traps
-  n_traps <- sample(trap_range[1]:trap_range[2], 1)
+	#### NUMBER OF TRAPS
+  lower_traps <- floor(0.9*exp_population)
+  upper_traps <- ceiling(1.1*exp_population)
+  n_traps <- sample(lower_traps:upper_traps, 1)
   longs <- runif(n_traps, sim_params$output$longitude_minMax[1], sim_params$output$longitude_minMax[2])
   lats <- runif(n_traps, sim_params$output$latitude_minMax[1], sim_params$output$latitude_minMax[2])
   trap_loc <- cbind(longs, lats)
   pairwise_traps <- pairwise_distance(trap_loc)
+  #### TRAP RADIUS
   detection_TR <- 0.5*mean(pairwise_traps$distance_min, na.rm = TRUE)
 
-  #### plot 1 - rDPM data
-  plot(trap_loc, cex = 1.5, ylab = "Latitude", xlab = "Longitude")
+  #### PLOT RDPM DATA
+  plot(trap_loc, cex = 1.5, ylab = "Latitude", xlab = "Longitude", pch = 0)
   title(main=title)
-  points(simulation$longitude, simulation$latitude, pch = 15, col= "green", cex = 1)
+  points(simulation$longitude, simulation$latitude, pch = 16, col= "green", cex = 1)
   points(simulation$source_lon, simulation$source_lat, col ="blue", pch = 18, cex = 2.5)
 
-	##### distance metric
+	#### DATA WITHIN TRAP RADIUS
 	lat_long <- cbind(simulation$longitude, simulation$latitude)
 	all_distances <- matrix(NA, nrow = length(simulation$longitude), ncol = length(trap_loc[,1]))
 
@@ -526,14 +446,20 @@ trap_assignment_data <- function(simulation, sim_params, sources, trap_range = c
 			        all_distances[b,a] <- latlon_to_bearing(trap_loc[a,2], trap_loc[a,1], simulation$latitude[b], simulation$longitude[b])$gc_dist
 		     }
 	 }
-	Trap_cap_density <- cbind(trap_loc, hit_miss = rep(NA, length(trap_loc[,1])))
+	Trap_cap_density <- cbind(trap_loc, hit_miss = rep(0, length(trap_loc[,1])))
 
-	for(crime in 1:length(trap_loc[,1]))
+	for(crime in 1:length(simulation$longitude))
 	 {
-	    detected_by <- length(which(all_distances[,crime] <= detection_TR))
-      Trap_cap_density[crime,3] <- detected_by
-	 }
+    row <- all_distances[crime,]
+    trap_i <- which(row == min(row))
 
+    if(all_distances[crime, trap_i] < detection_TR)
+    {
+    Trap_cap_density[trap_i,3] <- Trap_cap_density[trap_i,3] + 1
+    }
+    else{}
+   }
+  ##
   Trap_cap_density <- as.data.frame(Trap_cap_density)
   the_hits <- subset(Trap_cap_density, Trap_cap_density$hit_miss >0)
   the_miss <- subset(Trap_cap_density, Trap_cap_density$hit_miss  == 0)
@@ -549,6 +475,7 @@ trap_assignment_data <- function(simulation, sim_params, sources, trap_range = c
 
       sd_hits <- cbind(the_hits$longs, the_hits$lats)
       pw_dist <- pairwise_distance(sd_hits)
+      #### STANDARD DEVIATION
       Sd <- 0.5*mean(pw_dist$distance_min, na.rm = TRUE)
 
       source_hits_dist <- matrix(NA, nrow = length(sources$source_longitude), ncol = length(the_hits[,1]))
@@ -582,6 +509,7 @@ trap_assignment_data <- function(simulation, sim_params, sources, trap_range = c
           hits_near_sources[Sources,] <- cbind(hits_one_SD, hits_two_SD, hits_three_SD)
           miss_near_sources[Sources,] <- cbind(miss_one_SD, miss_two_SD, miss_three_SD)
         }
+        #### DISTANCE BETWEEN 2 SOURCES
         Source_Distances <- NA
         if(length(sources$source_longitude) == 2)
         {
@@ -589,27 +517,30 @@ trap_assignment_data <- function(simulation, sim_params, sources, trap_range = c
         }
         else{}
         ##### plot 2 - trap data
-        plot(the_hits$longs, the_hits$lats, cex = the_hits$hit_miss, ylab = "Latitude", xlab = "Longitude", col = "green", pch = 19, xlim = lon_minmax, ylim = lat_minmax, main = "The Model's Data")
-        points(the_miss$longs, the_miss$lats, cex = 1, col = "red", pch = 4)
-        points(simulation$source_lon, simulation$source_lat, col ="blue", pch = 18, cex = 2.5)
+        #plot(the_hits$longs, the_hits$lats, cex = the_hits$hit_miss, ylab = "Latitude", xlab = "Longitude", col = "green", pch = 19, xlim = lon_minmax, ylim = lat_minmax, main = "The Model's Data")
+        #points(the_miss$longs, the_miss$lats, cex = 1, col = "red", pch = 4)
+        #points(simulation$source_lon, simulation$source_lat, col ="blue", pch = 18, cex = 2.5)
 	      return(list(Trap_cap_density = Trap_cap_density, Sd = Sd, detection_TR= detection_TR, n_traps = n_traps, hits_near_sources = hits_near_sources, miss_near_sources = miss_near_sources, Source_Distances = Source_Distances))
        }
        else{
-        return(list(Trap_cap_density =Trap_cap_density))
+       return(list(Trap_cap_density =Trap_cap_density))
        }
     }
 
 ################################################################################
+# The "PA_simulation" function generates a random data set consisting of trap locations and densities,
+# along with a number of sources. This data is run on the PA and DPM and hitscores are extracted amongst all
+# parameters and values that are comparable. Note the explicit profiles are not extracted for memory purposes
+################################################################################
 
-
-PA_simulation <- function(replications = 5, Trap_Range = c(10,50), n_offenders = 5, n_sources = n_sources, n_cores = 1, PA_x_grid_cells = 50, PA_y_grid_cells= 50, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 3, sigma_range = c(1,3), tau_range = c(1,3), guardRail = 0.05)
+PA_simulation <- function(replications = 5, n_offenders = 5, n_sources = n_sources, n_cores = 1, PA_x_grid_cells = 50, PA_y_grid_cells= 50, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 3, sigma_range = c(1,3), tau_range = c(1,3), guardRail = 0.05)
 	 {
+   #PA_Hitscores, DPM_hitscores,	Difference, number of traps within 1:3 SD's
 		Hitscore_Output <- matrix(NA, nrow = (n_sources*replications), ncol = 13)
     colnames(Hitscore_Output) <- c("DPM_HS", "PA_HS", "DPM-PA", "TRAPS-1_SD", "TRAPS-2_SD", "TRAPS-3_SD", "HITS_1_SD", "HITS_2_SD", "HITS_3_SD", "MISS_1_SD", "MISS_2_SD", "MISS_3_SD", "ALLOC_PTS")
-		#PA_Hitscores, DPM_hitscores,	Difference, number of traps within 1:3 SD's
+    # Pop_density, actual_hits, actual_misses, potential_offenders, sigma and tau or rDPM, sigma and trap_radiusgenerated from data
     Param_Output <- matrix(NA, nrow = replications, ncol = 10)
     colnames(Param_Output) <- c("Pop_density", "#hits", "#misses", "#traps", "Uniform_sigma_draw","half_meanNND(traps)", "fitted_sigma", "rDPM_tau", "Trap_Radius", "Source_distances")
-    # Pop_density, actual_hits, actual_misses, potential_offenders, sigma and tau or rDPM, sigma and trap_radiusgenerated from data
 		Rep <- 1
 		while(Rep <= replications)
 		{
@@ -624,14 +555,14 @@ PA_simulation <- function(replications = 5, Trap_Range = c(10,50), n_offenders =
 			sim <- rDPM(random_offenders, priorMean_longitude = priorMean_longitude, priorMean_latitude = priorMean_latitude, alpha = alpha, sigma = sigma, tau = tau)
       }
       else{
-      sim <- rDPM(2500, priorMean_longitude = priorMean_longitude, priorMean_latitude = priorMean_latitude, alpha = 10, sigma = sigma, tau = tau)
+      sim <- rDPM(5000, priorMean_longitude = priorMean_longitude, priorMean_latitude = priorMean_latitude, alpha = 10, sigma = sigma, tau = tau)
       crime_per_source <- c()
       alloc_leng <- split(sim$group, sim$group)
       for(i in 1:length(unique(sim$group)))
       {
         crime_per_source[i] <- length(alloc_leng[[i]])
       }
-      a <- which(crime_per_source > 2*random_offenders)
+      a <- which(crime_per_source > 5*random_offenders)
       pois_one <- rpois(1, floor(random_offenders*0.5))
       pois_two <- random_offenders - pois_one
       one <- sample(1:crime_per_source[a[1]], pois_one)
@@ -642,10 +573,10 @@ PA_simulation <- function(replications = 5, Trap_Range = c(10,50), n_offenders =
       sim$source_lat <- c(sim$source_lat[a[1]], sim$source_lat[a[2]])
       sim$group <- c(rep(1, length(one)), rep(2, length(two)))
       }
-    	point_data <- geoData(sim$longitude, sim$latitude)
+      point_data <- geoData(sim$longitude, sim$latitude)
 		  master_params <- geoParams(data = point_data, sigma_mean = 1, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(point_data$longitude), priorMean_latitude = mean(point_data$latitude), guardRail = guardRail)
       s <- geoDataSource(sim$source_lon, sim$source_lat)
-      Trap_Data <- trap_assignment_data(simulation = sim, sim_params = master_params, sources = s, trap_range = Trap_Range, title = "Data Generated Via rDPM")
+      Trap_Data <- trap_assignment_data(simulation = sim, sim_params = master_params, sources = s, exp_population = n_offenders, title = "Data Generated Via rDPM")
       if(length(which(Trap_Data$Trap_cap_density$hit_miss > 1) > 1))
       {
         				### DPM ###
@@ -654,7 +585,7 @@ PA_simulation <- function(replications = 5, Trap_Range = c(10,50), n_offenders =
 								dpm_misses <- subset(Trap_Data$Trap_cap_density, Trap_Data$Trap_cap_density[,3]==0)
 								trap_loc_data <- geoData(Trap_Data$Trap_cap_density[,1], Trap_Data$Trap_cap_density[,2])
 								hit_data <- geoData(dpm_hits[,1], dpm_hits[,2])
-                hit_params <- geoParams(data = hit_data, sigma_mean = Trap_Data$Sd, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = guardRail)
+                hit_params <- geoParams(data = hit_data, sigma_mean = 0.9, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = guardRail)
 								hit_params$output$longitude_minMax <- master_params$output$longitude_minMax
 								hit_params$output$latitude_minMax <- master_params$output$latitude_minMax
 								m <- geoMCMC(data=hit_data, params= hit_params)
@@ -674,8 +605,8 @@ PA_simulation <- function(replications = 5, Trap_Range = c(10,50), n_offenders =
                 lower_index <- (n_sources*(Rep-1) + 1)
                 upper_index <- (n_sources*Rep)
                 Hitscore_Output[lower_index:upper_index, 1] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3]
-                Hitscore_Output[lower_index:upper_index, 2] <- Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
-                Hitscore_Output[lower_index:upper_index, 3] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3] - Michael_geoReportHitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
+                Hitscore_Output[lower_index:upper_index, 2] <- PA_Hitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
+                Hitscore_Output[lower_index:upper_index, 3] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3] - PA_Hitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
                 Hitscore_Output[lower_index:upper_index, 4] <- Trap_Data$hits_near_sources[1:n_sources, 1] + Trap_Data$miss_near_sources[1:n_sources, 1]
                 Hitscore_Output[lower_index:upper_index, 5] <- Trap_Data$hits_near_sources[1:n_sources, 2] + Trap_Data$miss_near_sources[1:n_sources, 2]
                 Hitscore_Output[lower_index:upper_index, 6] <- Trap_Data$hits_near_sources[1:n_sources, 3] + Trap_Data$miss_near_sources[1:n_sources, 3]
@@ -701,6 +632,10 @@ PA_simulation <- function(replications = 5, Trap_Range = c(10,50), n_offenders =
                 if(n_sources == 2)
                 {Param_Output[Rep, 10] <- Trap_Data$Source_Distances}
                 else{Param_Output[Rep, 10] <- NA}
+                to_remove <- list(dpm_hits = dpm_hits,dpm_misses =dpm_misses, trap_loc_data = trap_loc_data, hit_data =hit_data, hit_params =  hit_params,m = m, fitted_sigma = fitted_sigma,Trap_cap_density = Trap_cap_density, Data_parameters =  Data_parameters,
+                                  Trap_Poisson_Params = Trap_Poisson_Params, Source_Probabilities = Source_Probabilities, random_offenders = random_offenders, sim = sim, sigma= sigma, tau = tau)
+                                  #crime_per_source = crime_per_source, pois_one  =pois_one, pois_two = pois_two, a = a, alloc_leng = alloc_leng)
+                rm(to_remove)
                 Rep <- Rep + 1
 					}
       else{}
@@ -713,8 +648,43 @@ PA_simulation <- function(replications = 5, Trap_Range = c(10,50), n_offenders =
 ################################################################################
 start <-  Sys.time()
 par(mfrow =c(1,2))
-simulation <- PA_simulation(replications = 1, Trap_Range = c(10,50), n_offenders = 25, n_sources = 2, n_cores = 2, PA_x_grid_cells = 10, PA_y_grid_cells = 10, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0.5, sigma_range = c(1,3), tau_range = c(1,3), guardRail = 0.05)
+simulation <- PA_simulation(replications = 1, n_offenders = 25, n_sources = 2, n_cores = 2, PA_x_grid_cells = 5, PA_y_grid_cells = 5, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0.5, sigma_range = c(1,3), tau_range = c(1,3), guardRail = 0.05)
 end <- Sys.time()
 end - start
 #save(simulation, file= "testing_twoS.rdata")
 #boxplot(c(simulation$Hitscores_Output[,3][a]))
+################################################################################
+
+###### CLUSTER HITSCORE #################
+#geoReportHitscores <- function(params,source_data,surface)
+#{
+#sources <- cbind(source_data$source_longitude,source_data$source_latitude)
+#ordermat = matrix(0, params$output$latitude_cells, params$output$longitude_cells)
+#profile_order = order(surface)
+#for (i in 1:(params$output$latitude_cells*params$output$longitude_cells))
+#{
+#    ordermat[profile_order[i]] = i
+#    }
+#hitscoremat <<- 1 - ordermat/(params$output$latitude_cells*params$output$longitude_cells)
+#hitscoremat2 <- hitscoremat[nrow(hitscoremat):1, ]
+#xvec = seq(params$output$longitude_minMax[1], params$output$longitude_minMax[2],
+#    length = params$output$longitude_cells)
+#yvec = seq(params$output$latitude_minMax[1], params$output$latitude_minMax[2],
+#    length = params$output$latitude_cells)
+#xdiff = abs(outer(rep(1, nrow(sources)), xvec) - outer(sources[,
+#    1], rep(1, params$output$longitude_cells)))
+#ydiff = abs(outer(rep(1, nrow(sources)), yvec) - outer(sources[,
+#    2], rep(1, params$output$latitude_cells)))
+#msourcex = mapply(which.min, x = split(xdiff, row(xdiff)))
+#msourcey = params$output$longitude_cells - (mapply(which.min,
+#    x = split(ydiff, row(ydiff)))) + 1
+#if(nrow(sources) > 1) {
+#    hitscores = diag(hitscoremat2[msourcey, msourcex])
+#}
+#else {
+#    hitscores = hitscoremat2[msourcey, msourcex]
+#}
+#hit_output <<- cbind(sources, hitscores)
+#colnames(hit_output) <- c("lon", "lat", "hs")
+#return(hit_output)
+#}
