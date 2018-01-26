@@ -517,9 +517,9 @@ trap_assignment_data <- function(simulation, sim_params, sources, exp_population
         }
         else{}
         ##### plot 2 - trap data
-        #plot(the_hits$longs, the_hits$lats, cex = the_hits$hit_miss, ylab = "Latitude", xlab = "Longitude", col = "green", pch = 19, xlim = lon_minmax, ylim = lat_minmax, main = "The Model's Data")
-        #points(the_miss$longs, the_miss$lats, cex = 1, col = "red", pch = 4)
-        #points(simulation$source_lon, simulation$source_lat, col ="blue", pch = 18, cex = 2.5)
+        plot(the_hits$longs, the_hits$lats, cex = the_hits$hit_miss, ylab = "Latitude", xlab = "Longitude", col = "green", pch = 19, xlim = lon_minmax, ylim = lat_minmax, main = "The Model's Data")
+        points(the_miss$longs, the_miss$lats, cex = 1, col = "red", pch = 4)
+        points(simulation$source_lon, simulation$source_lat, col ="blue", pch = 18, cex = 2.5)
 	      return(list(Trap_cap_density = Trap_cap_density, Sd = Sd, detection_TR= detection_TR, n_traps = n_traps, hits_near_sources = hits_near_sources, miss_near_sources = miss_near_sources, Source_Distances = Source_Distances))
        }
        else{
@@ -533,7 +533,7 @@ trap_assignment_data <- function(simulation, sim_params, sources, exp_population
 # parameters and values that are comparable. Note the explicit profiles are not extracted for memory purposes
 ################################################################################
 
-PA_simulation <- function(replications = 5, n_offenders = 5, n_sources = n_sources, n_cores = 1, PA_x_grid_cells = 50, PA_y_grid_cells= 50, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 3, sigma_range = c(1,3), tau_range = c(1,3), guardRail = 0.05)
+PA_simulation <- function(replications = 5, n_offenders = 5, n_sources = n_sources, n_cores = 1, PA_x_grid_cells = 50, PA_y_grid_cells= 50, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 3, sigma_range = c(1,3), guardRail = 0.05)
 	 {
    #PA_Hitscores, DPM_hitscores,	Difference, number of traps within 1:3 SD's
 		Hitscore_Output <- matrix(NA, nrow = (n_sources*replications), ncol = 13)
@@ -544,99 +544,105 @@ PA_simulation <- function(replications = 5, n_offenders = 5, n_sources = n_sourc
 		Rep <- 1
 		while(Rep <= replications)
 		{
-    random_offenders <- rpois(1, n_offenders)
-    print(random_offenders)
-    if(random_offenders > 1)
-    {
-      sigma <- runif(1, sigma_range[1], sigma_range[2])
-      tau <- runif(1, tau_range[1], tau_range[2])
+      random_offenders <- rpois(1, n_offenders)
+      print(random_offenders)
+      if(random_offenders > 1)
+        {
+          sigma <- runif(1, sigma_range[1], sigma_range[2])
+          tau <- runif(1, 1, 2*sigma)
       if(n_sources == 1)
-      {
-			sim <- rDPM(random_offenders, priorMean_longitude = priorMean_longitude, priorMean_latitude = priorMean_latitude, alpha = alpha, sigma = sigma, tau = tau)
-      }
-      else{
-      sim <- rDPM(5000, priorMean_longitude = priorMean_longitude, priorMean_latitude = priorMean_latitude, alpha = 10, sigma = sigma, tau = tau)
-      crime_per_source <- c()
-      alloc_leng <- split(sim$group, sim$group)
-      for(i in 1:length(unique(sim$group)))
-      {
-        crime_per_source[i] <- length(alloc_leng[[i]])
-      }
-      a <- which(crime_per_source > 5*random_offenders)
-      pois_one <- rpois(1, floor(random_offenders*0.5))
-      pois_two <- random_offenders - pois_one
-      one <- sample(1:crime_per_source[a[1]], pois_one)
-      two <- sample(1:crime_per_source[a[2]], pois_two)
-      sim$longitude <- c(sim$longitude[one], sim$longitude[two])
-      sim$latitude <- c(sim$latitude[one], sim$latitude[two])
-      sim$source_lon <- c(sim$source_lon[a[1]], sim$source_lon[a[2]])
-      sim$source_lat <- c(sim$source_lat[a[1]], sim$source_lat[a[2]])
-      sim$group <- c(rep(1, length(one)), rep(2, length(two)))
-      }
+        {
+			    sim <- rDPM(random_offenders, priorMean_longitude = priorMean_longitude, priorMean_latitude = priorMean_latitude, alpha = alpha, sigma = sigma, tau = tau)
+        }
+      else
+        {
+          sim <- rDPM(5000, priorMean_longitude = priorMean_longitude, priorMean_latitude = priorMean_latitude, alpha = 10, sigma = sigma, tau = tau)
+          crime_per_source <- c()
+          alloc_leng <- split(sim$group, sim$group)
+          for(i in 1:length(unique(sim$group)))
+          {
+            crime_per_source[i] <- length(alloc_leng[[i]])
+          }
+          a <- which(crime_per_source > 2*random_offenders)
+          pois_one <- rpois(1, floor(random_offenders*0.5))
+          pois_two <- random_offenders - pois_one
+          one <- sample(1:crime_per_source[a[1]], pois_one)
+          two <- sample(1:crime_per_source[a[2]], pois_two)
+          sim$longitude <- c(sim$longitude[one], sim$longitude[two])
+          sim$latitude <- c(sim$latitude[one], sim$latitude[two])
+          sim$source_lon <- c(sim$source_lon[a[1]], sim$source_lon[a[2]])
+          sim$source_lat <- c(sim$source_lat[a[1]], sim$source_lat[a[2]])
+          sim$group <- c(rep(1, length(one)), rep(2, length(two)))
+        }
       point_data <- geoData(sim$longitude, sim$latitude)
 		  master_params <- geoParams(data = point_data, sigma_mean = 1, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(point_data$longitude), priorMean_latitude = mean(point_data$latitude), guardRail = guardRail)
       s <- geoDataSource(sim$source_lon, sim$source_lat)
       Trap_Data <- trap_assignment_data(simulation = sim, sim_params = master_params, sources = s, exp_population = n_offenders, title = "Data Generated Via rDPM")
+      #############################################################################################################################################################
       if(length(which(Trap_Data$Trap_cap_density$hit_miss > 1) > 1))
-      {
-        				### DPM ###
-								dpm_hits <- subset(Trap_Data$Trap_cap_density, Trap_Data$Trap_cap_density[,3]>0)
-								##### For the dpm repeat the points that already exist given the number of trapped animals. dpm_hits <- dpm_hits[rep(1:nrow(dpm_hits), dpm_hits[,3]),]
-								dpm_misses <- subset(Trap_Data$Trap_cap_density, Trap_Data$Trap_cap_density[,3]==0)
-								trap_loc_data <- geoData(Trap_Data$Trap_cap_density[,1], Trap_Data$Trap_cap_density[,2])
-								hit_data <- geoData(dpm_hits[,1], dpm_hits[,2])
-                hit_params <- geoParams(data = hit_data, sigma_mean = 0.9, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = guardRail)
-								hit_params$output$longitude_minMax <- master_params$output$longitude_minMax
-								hit_params$output$latitude_minMax <- master_params$output$latitude_minMax
-								m <- geoMCMC(data=hit_data, params= hit_params)
-                fitted_sigma <- mean(m$sigma)
-                dpm_hits <- dpm_hits[rep(1:nrow(dpm_hits), dpm_hits[,3]),]
-                hit_data <- geoData(dpm_hits[,1], dpm_hits[,2])
-                hit_params <- geoParams(data = hit_data, sigma_mean = fitted_sigma, sigma_var = 0, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = guardRail)
-								hit_params$output$longitude_minMax <- master_params$output$longitude_minMax
-								hit_params$output$latitude_minMax <- master_params$output$latitude_minMax
-								m <- geoMCMC(data=hit_data, params= hit_params)
-								### PA ###
-								Trap_cap_density <- as.data.frame(Trap_Data$Trap_cap_density)
-								Data_parameters <- Extract_Params(Trap_Data = Trap_Data$Trap_cap_density, PA_x_grid_cells = PA_x_grid_cells, PA_y_grid_cells = PA_y_grid_cells, Guard_Rail = guardRail, Trap_Radius = Trap_Data$detection_TR, n_sources = n_sources, n_cores = n_cores, n_offenders = n_offenders, Sd_x = Trap_Data$Sd, Sd_y = Trap_Data$Sd)
-								Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
-								Source_Probabilities <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
-                ### Extract data
-                lower_index <- (n_sources*(Rep-1) + 1)
-                upper_index <- (n_sources*Rep)
-                Hitscore_Output[lower_index:upper_index, 1] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3]
-                Hitscore_Output[lower_index:upper_index, 2] <- PA_Hitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
-                Hitscore_Output[lower_index:upper_index, 3] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3] - PA_Hitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
-                Hitscore_Output[lower_index:upper_index, 4] <- Trap_Data$hits_near_sources[1:n_sources, 1] + Trap_Data$miss_near_sources[1:n_sources, 1]
-                Hitscore_Output[lower_index:upper_index, 5] <- Trap_Data$hits_near_sources[1:n_sources, 2] + Trap_Data$miss_near_sources[1:n_sources, 2]
-                Hitscore_Output[lower_index:upper_index, 6] <- Trap_Data$hits_near_sources[1:n_sources, 3] + Trap_Data$miss_near_sources[1:n_sources, 3]
-                Hitscore_Output[lower_index:upper_index, 7:9] <- Trap_Data$hits_near_sources[1:n_sources, 1:3]
-                Hitscore_Output[lower_index:upper_index, 10:12] <- Trap_Data$miss_near_sources[1:n_sources, 1:3]
-
-                allocations <- c()
-                for(i in 1:n_sources)
+        {
+      				### DPM ###
+							dpm_hits <- subset(Trap_Data$Trap_cap_density, Trap_Data$Trap_cap_density[,3]>0)
+							##### For the dpm repeat the points that already exist given the number of trapped animals. dpm_hits <- dpm_hits[rep(1:nrow(dpm_hits), dpm_hits[,3]),]
+							dpm_misses <- subset(Trap_Data$Trap_cap_density, Trap_Data$Trap_cap_density[,3]==0)
+							trap_loc_data <- geoData(Trap_Data$Trap_cap_density[,1], Trap_Data$Trap_cap_density[,2])
+							hit_data <- geoData(dpm_hits[,1], dpm_hits[,2])
+              hit_params <- geoParams(data = hit_data, sigma_mean = 0.9, sigma_squared_shape = 2, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = guardRail)
+							hit_params$output$longitude_minMax <- master_params$output$longitude_minMax
+							hit_params$output$latitude_minMax <- master_params$output$latitude_minMax
+							m <- geoMCMC(data=hit_data, params= hit_params)
+              fitted_sigma <- mean(m$sigma)
+              dpm_hits <- dpm_hits[rep(1:nrow(dpm_hits), dpm_hits[,3]),]
+              hit_data <- geoData(dpm_hits[,1], dpm_hits[,2])
+              hit_params <- geoParams(data = hit_data, sigma_mean = fitted_sigma, sigma_var = 0, samples= 50000, chains = 200, burnin = 2000, priorMean_longitude = mean(hit_data$longitude), priorMean_latitude = mean(hit_data$latitude), guardRail = guardRail)
+							hit_params$output$longitude_minMax <- master_params$output$longitude_minMax
+							hit_params$output$latitude_minMax <- master_params$output$latitude_minMax
+							m <- geoMCMC(data=hit_data, params= hit_params)
+							### PA ###
+							Trap_cap_density <- as.data.frame(Trap_Data$Trap_cap_density)
+							Data_parameters <- Extract_Params(Trap_Data = Trap_Data$Trap_cap_density, PA_x_grid_cells = PA_x_grid_cells, PA_y_grid_cells = PA_y_grid_cells, Guard_Rail = guardRail, Trap_Radius = Trap_Data$detection_TR, n_sources = n_sources, n_cores = n_cores, n_offenders = n_offenders, Sd_x = Trap_Data$Sd, Sd_y = Trap_Data$Sd)
+							Trap_Poisson_Params <- Trap_Po_Parameters(Data_parameters)
+							Source_Probabilities <- Multisource_probs(Data_parameters, Trap_Poisson_Params)
+              ### Extract data
+              lower_index <- (n_sources*(Rep-1) + 1)
+              upper_index <- (n_sources*Rep)
+              Hitscore_Output[lower_index:upper_index, 1] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3]
+              Hitscore_Output[lower_index:upper_index, 2] <- PA_Hitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
+              Hitscore_Output[lower_index:upper_index, 3] <- geoReportHitscores(hit_params, s, m$posteriorSurface)[,3] - PA_Hitscores(Data_parameters, s, Source_Probabilities$Source_Both)[,3]
+              Hitscore_Output[lower_index:upper_index, 4] <- Trap_Data$hits_near_sources[1:n_sources, 1] + Trap_Data$miss_near_sources[1:n_sources, 1]
+              Hitscore_Output[lower_index:upper_index, 5] <- Trap_Data$hits_near_sources[1:n_sources, 2] + Trap_Data$miss_near_sources[1:n_sources, 2]
+              Hitscore_Output[lower_index:upper_index, 6] <- Trap_Data$hits_near_sources[1:n_sources, 3] + Trap_Data$miss_near_sources[1:n_sources, 3]
+              Hitscore_Output[lower_index:upper_index, 7:9] <- Trap_Data$hits_near_sources[1:n_sources, 1:3]
+              Hitscore_Output[lower_index:upper_index, 10:12] <- Trap_Data$miss_near_sources[1:n_sources, 1:3]
+              allocations <- c()
+              for(i in 1:n_sources)
                 {
-                allocations[i] <- length(which(sim$group == i))
+                  allocations[i] <- length(which(sim$group == i))
                 }
-                Hitscore_Output[lower_index:upper_index, 13] <- allocations
+              Hitscore_Output[lower_index:upper_index, 13] <- allocations
 
-                Param_Output[Rep, 1] <- random_offenders
-                Param_Output[Rep, 2] <- sum(Data_parameters$Hits_Only[,3])
-                Param_Output[Rep, 3] <- length(Data_parameters$Miss_Only[,3])
-                Param_Output[Rep, 4] <- Trap_Data$n_traps
-                Param_Output[Rep, 5] <- sigma
-                Param_Output[Rep, 6] <- Trap_Data$Sd
-                Param_Output[Rep, 7] <- fitted_sigma
-                Param_Output[Rep, 8] <- tau
-                Param_Output[Rep, 9] <- Trap_Data$detection_TR
-                if(n_sources == 2)
-                {Param_Output[Rep, 10] <- Trap_Data$Source_Distances}
-                else{Param_Output[Rep, 10] <- NA}
-                to_remove <- list(dpm_hits = dpm_hits,dpm_misses =dpm_misses, trap_loc_data = trap_loc_data, hit_data =hit_data, hit_params =  hit_params,m = m, fitted_sigma = fitted_sigma,Trap_cap_density = Trap_cap_density, Data_parameters =  Data_parameters,
-                                  Trap_Poisson_Params = Trap_Poisson_Params, Source_Probabilities = Source_Probabilities, random_offenders = random_offenders, sim = sim, sigma= sigma, tau = tau)
-                                  #crime_per_source = crime_per_source, pois_one  =pois_one, pois_two = pois_two, a = a, alloc_leng = alloc_leng)
-                rm(to_remove)
-                Rep <- Rep + 1
+              Param_Output[Rep, 1] <- random_offenders
+              Param_Output[Rep, 2] <- sum(Data_parameters$Hits_Only[,3])
+              Param_Output[Rep, 3] <- length(Data_parameters$Miss_Only[,3])
+              Param_Output[Rep, 4] <- Trap_Data$n_traps
+              Param_Output[Rep, 5] <- sigma
+              Param_Output[Rep, 6] <- Trap_Data$Sd
+              Param_Output[Rep, 7] <- fitted_sigma
+              Param_Output[Rep, 8] <- tau
+              Param_Output[Rep, 9] <- Trap_Data$detection_TR
+              if(n_sources == 2)
+                {
+                  Param_Output[Rep, 10] <- Trap_Data$Source_Distances
+                }
+              else
+                {
+                  Param_Output[Rep, 10] <- NA
+                }
+              to_remove <- list(dpm_hits = dpm_hits,dpm_misses =dpm_misses, trap_loc_data = trap_loc_data, hit_data =hit_data, hit_params =  hit_params,m = m, fitted_sigma = fitted_sigma,Trap_cap_density = Trap_cap_density, Data_parameters =  Data_parameters,
+                                Trap_Poisson_Params = Trap_Poisson_Params, Source_Probabilities = Source_Probabilities, random_offenders = random_offenders, sim = sim, sigma= sigma, tau = tau)
+                                #crime_per_source = crime_per_source, pois_one  =pois_one, pois_two = pois_two, a = a, alloc_leng = alloc_leng)
+              rm(to_remove)
+              Rep <- Rep + 1
 					}
       else{}
       }
@@ -648,11 +654,17 @@ PA_simulation <- function(replications = 5, n_offenders = 5, n_sources = n_sourc
 ################################################################################
 start <-  Sys.time()
 par(mfrow =c(1,2))
-simulation <- PA_simulation(replications = 1, n_offenders = 25, n_sources = 2, n_cores = 2, PA_x_grid_cells = 5, PA_y_grid_cells = 5, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0.5, sigma_range = c(1,3), tau_range = c(1,3), guardRail = 0.05)
+simulation <- PA_simulation(replications = 1, n_offenders = 25, n_sources = 2, n_cores = 2, PA_x_grid_cells = 30, PA_y_grid_cells = 30, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0.5, sigma_range = c(1,3), guardRail = 0.05)
 end <- Sys.time()
 end - start
+
+############################################################# FILE SAVES
+# LOCAL
 #save(simulation, file= "testing_twoS.rdata")
-#boxplot(c(simulation$Hitscores_Output[,3][a]))
+
+# CLUSTER
+
+
 ################################################################################
 
 ###### CLUSTER HITSCORE #################
