@@ -1,4 +1,7 @@
 rm(list = ls()) #remove all objects
+
+#.libPaths(.libPaths()[2:4]) for R to access packages from a different location - USE ON CONATINER ONLY
+
 library(flux)
 library(gRbase)      ## For the "combnPrim" function, efficiently listing combinations
                      ## Initial install, run commands:
@@ -258,8 +261,7 @@ Multisource_probs <- function(Data_Params, Po_Params)
 				Source_Miss <- SS_Miss/sum(SS_Miss)
 				Source_Both <- SS_Both/sum(SS_Both)
 				Source_Prob <- list(Source_Hits = Source_Hits, Source_Miss = Source_Miss, Source_Both = Source_Both)
-
-				return(Source_Prob)
+			  return(Source_Prob)
 
 			}	 else{
 				cluster <- makeCluster(Data_Params$n_cores)
@@ -633,8 +635,6 @@ PA_simulation <- function(trap_spacing = "random", replications = 5, n_offenders
       s <- geoDataSource(sim$source_lon, sim$source_lat)
       Trap_Data <- trap_assignment_data(simulation = sim, sim_params = master_params, sources = s, exp_population = n_offenders, title = "Data Generated Via rDPM", spacing = trap_spacing)
       #############################################################################################################################################################
-      print("5")
-      print(Trap_Data$hits_near_sources)
       if(sum(Trap_Data$hits_near_sources[,3]>4)==n_sources)
       {
       if(length(which(Trap_Data$Trap_cap_density$hit_miss > 1) > 1))
@@ -713,10 +713,10 @@ PA_simulation <- function(trap_spacing = "random", replications = 5, n_offenders
 ############################################################# RUN AND FILE SAVES
 # LOCAL
 # start <-  Sys.time()
-
-par(mfrow =c(1,2))
-simulation <- PA_simulation(replications = 1, n_offenders = 25, n_sources = 2, n_cores = 1, PA_x_grid_cells = 10, PA_y_grid_cells = 10, trap_spacing = "random", alpha = 1, sigma = 1,priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, guardRail = 0.05)
-simulation$Hitscores_Output
+#
+# par(mfrow =c(1,2))
+# simulation <- PA_simulation(replications = 1, n_offenders = 25, n_sources = 2, n_cores = 1, PA_x_grid_cells = 10, PA_y_grid_cells = 10, trap_spacing = "random", alpha = 1, sigma = 1,priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, guardRail = 0.05)
+# simulation$Hitscores_Output
 
 # end <- Sys.time()
 # end - start
@@ -724,7 +724,7 @@ simulation$Hitscores_Output
 
 # CLUSTER
 # args=commandArgs(trailingOnly=TRUE)
-# TwoS_ <- PA_simulation(replications = 1, n_offenders = 25, n_sources = 2, n_cores = 2, PA_x_grid_cells = 30, PA_y_grid_cells = 30, priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0.5, sigma = 1, guardRail = 0.05)
+# TwoS_ <- PA_simulation(replications = 1, n_offenders = 25, n_sources = 2, n_cores = 2, PA_x_grid_cells = 30, PA_y_grid_cells = 30,  trap_spacing = "random", priorMean_longitude = -0.04217481, priorMean_latitude = 51.5235505, alpha = 0.5, sigma = 1, guardRail = 0.05)
 #
 # save(TwoS_, file=paste("TwoS_",args,sep=""))
 
